@@ -1,7 +1,17 @@
 import argparse
 import pdb
 
+from transformers import T5Tokenizer
+
 from preprocess import text_to_graph, print_triplets
+from src.data import get_dataset
+from src.model import GNNQA
+from src.t5 import T5ForConditionalGeneration, T5KILForConditionalGeneration
+from pytorch_lightning import Trainer
+
+argparser = argparse.ArgumentParser()
+argparser.add_argument('--dataset', type=str, default='eli5', help='Dataset to use')
+argparser.add_argument('--train_samples', type=int, default=1000, help='Number of train samples')
 
 
 def main(args):
@@ -12,5 +22,34 @@ def main(args):
     graph = text_to_graph(3, sent1, sent2)
     print_triplets(graph)
 
+    tokenizer = T5Tokenizer.from_pretrained('t5-base')
+
+    #load dataset
+    dataset = get_dataset(args.dataset)
+
+    # dataset sampling
+    dataset['train'] = dataset['train'].shuffle(seed=42).select(range(args.train_samples))
+    dataset['validation'] = dataset['validation'].shuffle(seed=42).select(range(100))
+
+    # dataset preprocessing
+    # odeificare text_to_graph per avere in input una sola frase
+    # aggiungere al grafo creato un super nodo che rappresenta la domanda
+    dataset['train'] = dataset['train'].map(lambda example: {'graph': text_to_graph(3, example['question'])})
+    dataset['validation'] = dataset['validation'].map(lambda example: {'graph': text_to_graph(3, example['question'])})
+
+    # tokenization
+    dataset['train'] = dataset['train'].map(lambda example: tokenizer(example['question'], padding='max_length', truncation=True, max_length=512), batched=True)
+    dataset['validation'] = dataset['validation'].map(lambda example: tokenizer(example['question'], padding='max_length', truncation=True, max_length=512), batched=True)
+
+
+    #model creation
+    model = T5KILForConditionalGeneration.from_pretrained('t5-base')
+    gnnqa = GNNQA(model)
+    trainer_args = {'max_epochs': 1, 'gpus': 1}
+    trainer = Trainer(model=gnnqa, args=trainer_args, train_dataset=dataset['train'], eval_dataset=dataset['validation'])
+
+    trainer.train()
+
 if __name__ == '__main__':
-    main(None)
+    args = argparser.parse_args()
+    main(args)

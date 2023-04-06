@@ -49,17 +49,28 @@ def get_relations(entities, N):
         url = "https://www.wikidata.org/w/api.php?action=wbgetclaims&format=json&entity=" + entity
         response = requests.get(url)
         data = json.loads(response.text)
+        cont = 0
         for item in data['claims']:
             if item.startswith("P"):
                 relation = item[1:]
                 if relation not in relations:
                     relations.append(relation)
                     if N > 1:
-                        sub_entities = get_entities(item['mainsnak']['datavalue']['value']['id'])
-                        sub_relations = get_relations(sub_entities, N - 1)
-                        for sub_relation in sub_relations:
-                            if sub_relation not in relations:
-                                relations.append(sub_relation)
+
+                        claims = data['claims'][item][0]
+
+                        if "mainsnak" in claims:
+                            if "datavalue" in claims["mainsnak"]:
+                                if "value" in claims["mainsnak"]["datavalue"]:
+                                    value = claims['mainsnak']['datavalue']['value']
+
+                                    if type(value) is dict and "id" in value :
+                                        sub_entities = get_entities(value['id'])
+                                        sub_relations = get_relations(sub_entities, N - 1)
+                                        for sub_relation in sub_relations:
+                                            if sub_relation not in relations:
+                                                relations.append(sub_relation)
+
     return relations
 
 

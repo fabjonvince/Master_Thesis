@@ -10,7 +10,7 @@ from transformers.modeling_outputs import Seq2SeqLMOutput, BaseModelOutput, Base
 from transformers.models.t5.modeling_t5 import T5Block, T5LayerNorm
 from transformers.utils.model_parallel_utils import get_device_map, assert_device_map
 
-from src.model import CustomKilLayer
+from model import CustomKilLayer
 
 
 class T5KILStack(T5PreTrainedModel):

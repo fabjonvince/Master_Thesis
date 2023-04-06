@@ -22,11 +22,12 @@ class GNNQA(pl.LightningModule):
         return {"loss": torch.tensor(1.0)}
 
 
-class CustomKilLayer(torch.nn):
+class CustomKilLayer(torch.nn.Module):
     def __init__(self,
                  n_rel, # Numero di tutte le possibili relazioni
                  edges,
                  ):
+        print('KIL layer')
         super().__init__()
         self.register_parameter("wrel", torch.nn.Parameter(torch.Tensor(1, n_rel)))
 

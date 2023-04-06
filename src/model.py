@@ -8,9 +8,11 @@ class GNNQA(pl.LightningModule):
         self.hparams = hparams
 
     def forward(self, x):
+        print('forward step')
         return x
 
     def training_step(self, batch, batch_idx):
+        print('training step')
         return {"loss": torch.tensor(1.0)}
 
     def configure_optimizers(self):
@@ -18,10 +20,6 @@ class GNNQA(pl.LightningModule):
 
     def test_step(self, batch, batch_idx):
         return {"loss": torch.tensor(1.0)}
-
-
-def lin_proj(inputs):
-    pass
 
 
 class CustomKilLayer(torch.nn):

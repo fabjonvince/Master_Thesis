@@ -1,8 +1,8 @@
 import requests
 import json
 
-
-def text_to_graph(N, text1, text2):
+"""
+def text_to_graph2(N, text1, text2):
     # Get all entities for each text
     entities1 = get_entities(text1)
     entities2 = get_entities(text2)
@@ -16,6 +16,19 @@ def text_to_graph(N, text1, text2):
 
     # Convert to triplets
     triplets = convert_to_triplets(merged_nodes)
+
+    return triplets
+"""
+
+def text_to_graph(N, text):
+    # Get all entities for each text
+    entities = get_entities(text)
+
+    # Get all relations for each entity
+    relations = get_relations(entities, N)
+
+    # Convert to triplets
+    triplets = convert_to_triplets(relations)
 
     return triplets
 

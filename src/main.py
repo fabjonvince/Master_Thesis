@@ -20,11 +20,6 @@ name_mapping = {
 def main(args):
     #pdb.set_trace()
     print("In Main")
-    sent1 = "Where is born Barack Obama?"
-    sent2 = "Obama was born in Honolulu, Hawaii. After graduating from Columbia University in 1983, he worked as a community organizer in Chicago. In 1988, he enrolled in Harvard Law School, where he was the first black president of the Harvard Law Review."
-    #graph = text_to_graph2(3, sent1, sent2)
-    graph = text_to_graph(3, sent1)
-    print_triplets(graph)
 
     tokenizer = T5Tokenizer.from_pretrained('t5-base')
 
@@ -50,12 +45,11 @@ def main(args):
     dataset[train_name] = dataset[train_name].map(lambda example: tokenizer(example[question_name], padding='max_length', truncation=True, max_length=512), batched=True)
     dataset[eval_name] = dataset[eval_name].map(lambda example: tokenizer(example[question_name], padding='max_length', truncation=True, max_length=512), batched=True)
 
-
     #model creation
-    model = T5KILForConditionalGeneration.from_pretrained('google/t5-v1_1-base')
+    model = T5KILForConditionalGeneration
     gnnqa = GNNQA(model)
     trainer_args = {'max_epochs': 1, 'gpus': 1}
-    trainer = Trainer(model=gnnqa, args=trainer_args, train_dataset=dataset['train'], eval_dataset=dataset['validation'])
+    trainer = Trainer(model=gnnqa, args=trainer_args, train_dataset=dataset[train_name], eval_dataset=dataset[eval_name])
 
     trainer.train()
 

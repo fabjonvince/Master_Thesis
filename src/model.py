@@ -2,10 +2,10 @@ import pytorch_lightning as pl
 import torch
 
 class GNNQA(pl.LightningModule):
-    def __init__(self, model, hparams):
+    def __init__(self, model):
         super().__init__()
         self.model = model
-        self.hparams = hparams
+        #self.hparams = hparams
 
     def forward(self, x):
         print('forward step')

@@ -1,25 +1,6 @@
 import requests
 import json
 
-"""
-def text_to_graph2(N, text1, text2):
-    # Get all entities for each text
-    entities1 = get_entities(text1)
-    entities2 = get_entities(text2)
-
-    # Get all relations for each entity
-    relations1 = get_relations(entities1, N)
-    relations2 = get_relations(entities2, N)
-
-    # Merge common nodes
-    merged_nodes = merge_nodes(relations1, relations2)
-
-    # Convert to triplets
-    triplets = convert_to_triplets(merged_nodes)
-
-    return triplets
-"""
-
 def text_to_graph(N, text):
     # Get all entities for each text
     entities = get_entities(text)
@@ -46,6 +27,7 @@ def get_entities(text):
 def get_relations(entities, N):
     relations = []
     for entity in entities:
+        relations.append(entity)
         url = "https://www.wikidata.org/w/api.php?action=wbgetclaims&format=json&entity=" + entity
         response = requests.get(url)
         data = json.loads(response.text)
@@ -58,7 +40,6 @@ def get_relations(entities, N):
                     if N > 1:
 
                         claims = data['claims'][item][0]
-
                         if "mainsnak" in claims:
                             if "datavalue" in claims["mainsnak"]:
                                 if "value" in claims["mainsnak"]["datavalue"]:
@@ -88,13 +69,15 @@ def merge_nodes(relations1, relations2):
 
 
 def convert_to_triplets(nodes):
+    # index 0 = source, altri index = relazioni
     triplets = []
     for i in range(len(nodes)):
-        if i % 3 == 0:
-            entity1 = nodes[i]
-            entity2 = nodes[i + 2]
-            relation = nodes[i + 1]
-            triplets.append((entity1, relation, entity2))
+        entity1 = nodes[0]
+        relation = nodes[i]
+        triplets.append((entity1, relation, None))
+
+    if len(triplets) == 0:
+        return None
     return triplets
 
 

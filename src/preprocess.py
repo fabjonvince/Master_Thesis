@@ -5,7 +5,7 @@ def text_to_graph(N, text):
     # Get all entities for each text
     entities = get_entities(text)
 
-    # Get all relations for each entity
+    # Get all relations fo r each entity
     relations = get_relations(entities, N)
 
     # Convert to triplets
@@ -15,42 +15,43 @@ def text_to_graph(N, text):
 
 
 def get_entities(text):
-    url = "https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json&language=en&type=item&search=" + text
-    response = requests.get(url)
-    data = json.loads(response.text)
+
     entities = []
-    for item in data['search']:
-        entities.append(item['id'])
+    for word in text:
+        url = "https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json&language=en&type=item&search=" + word
+        response = requests.get(url)
+        data = json.loads(response.text)
+        for item in data['search']:
+            entities.append(item['id'])
+
     return entities
 
 
-def get_relations(entities, N):
+def get_relations(entities, N, cont=0):
     relations = []
-    for entity in entities:
-        relations.append(entity)
-        url = "https://www.wikidata.org/w/api.php?action=wbgetclaims&format=json&entity=" + entity
-        response = requests.get(url)
-        data = json.loads(response.text)
-        cont = 0
-        for item in data['claims']:
-            if item.startswith("P"):
-                relation = item[1:]
-                if relation not in relations:
-                    relations.append(relation)
-                    if N > 1:
-
-                        claims = data['claims'][item][0]
-                        if "mainsnak" in claims:
-                            if "datavalue" in claims["mainsnak"]:
-                                if "value" in claims["mainsnak"]["datavalue"]:
-                                    value = claims['mainsnak']['datavalue']['value']
-
-                                    if type(value) is dict and "id" in value :
+    if N>1:
+        for entity in entities:
+            url = "https://www.wikidata.org/w/api.php?action=wbgetclaims&format=json&entity=" + entity
+            response = requests.get(url)
+            data = json.loads(response.text)
+            for item in data['claims']:
+                if item.startswith("P"):
+                    claims = data['claims'][item][0]
+                    if "mainsnak" in claims:
+                        if "datavalue" in claims["mainsnak"]:
+                            if "value" in claims["mainsnak"]["datavalue"]:
+                                value = claims['mainsnak']['datavalue']['value']
+                                if type(value) is dict and "id" in value :
+                                    if value['id'] not in relations:
                                         sub_entities = get_entities(value['id'])
-                                        sub_relations = get_relations(sub_entities, N - 1)
-                                        for sub_relation in sub_relations:
-                                            if sub_relation not in relations:
-                                                relations.append(sub_relation)
+                                        sub_relations = get_relations(sub_entities, N - 1, cont+1 )
+                                        if cont ==0:
+                                            relations.append([entity, [value['id'], sub_relations]])
+                                        else:
+                                            relations.append([value['id'], [sub_relations]])
+
+    else:
+        relations = entities
 
     return relations
 
@@ -72,12 +73,12 @@ def convert_to_triplets(nodes):
     # index 0 = source, altri index = relazioni
     triplets = []
     for i in range(len(nodes)):
-        entity1 = nodes[0]
-        relation = nodes[i]
-        triplets.append((entity1, relation, None))
+        entity1 = nodes[i][0]
+        relation = nodes[i][1][0]
 
-    if len(triplets) == 0:
-        return None
+        for j in range(len(nodes[i][1][1])):
+            triplets.append((entity1, relation, nodes[i][1][1][j]))
+
     return triplets
 
 

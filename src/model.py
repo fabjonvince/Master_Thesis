@@ -1,34 +1,59 @@
 import pytorch_lightning as pl
 import torch
+from t5 import T5KILForConditionalGeneration
+
 
 class GNNQA(pl.LightningModule):
-    def __init__(self, model):
+    def __init__(self):
         super().__init__()
-        self.model = model
-        #self.hparams = hparams
+        self.model = T5KILForConditionalGeneration
+        self.pom = torch.nn.Linear(2,2)
 
-    def forward(self, x):
-        print('forward step')
-        return x
+    def forward(self, input_ids, attention_mask=None, labels=None):
+
+        print('training step')
+        output = self.model(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            labels=labels
+        )
+        exit()
+        return output.loss, output.logits
+
 
     def training_step(self, batch, batch_idx):
-        print('training step')
-        return {"loss": torch.tensor(1.0)}
+
+        print('training step ')
+        print(batch.keys())
+        print('\n title: ', batch['title'])
+        print('\n graph: ', batch['graph'])
+        #print('\n answers: ', batch['answers'])
+        exit()
+        input_ids = batch['input_ids']
+        attention_mask = batch['attention_mask']
+        labels = batch['target']
+        loss, logits = self(input_ids, attention_mask, labels)
+
+        return loss
+
 
     def configure_optimizers(self):
-        return torch.optim.SGD(self.parameters(), lr=0.1)
+        return torch.optim.SGD(self.pom.parameters(), lr=0.1)
 
     def test_step(self, batch, batch_idx):
         return {"loss": torch.tensor(1.0)}
 
+
+
+"""
 
 class CustomKilLayer(torch.nn.Module):
     def __init__(self,
                  n_rel, # Numero di tutte le possibili relazioni
                  edges,
                  ):
-        print('KIL layer')
         super().__init__()
+        print('KIL layer')
         self.register_parameter("wrel", torch.nn.Parameter(torch.Tensor(1, n_rel)))
 
     def customCRW(
@@ -111,4 +136,4 @@ class CustomKilLayer(torch.nn.Module):
         new_embds = self.knowledge_integration(t, edges, edges[node_index])
         return new_embds
 
-
+"""

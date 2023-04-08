@@ -31,6 +31,13 @@ def main(args):
     test_name = dataset_columns[2]
     question_name = dataset_columns[3]
 
+    # prova con una singola parola
+    print(dataset[train_name][0][question_name].split())
+    triplets = text_to_graph(2, dataset[train_name][0][question_name].split()[4])
+    print(triplets)
+    exit()
+
+
     # dataset sampling
     dataset[train_name] = dataset[train_name].shuffle(seed=42).select(range(args.train_samples))
     dataset[eval_name] = dataset[eval_name].shuffle(seed=42).select(range(100))
@@ -38,18 +45,21 @@ def main(args):
     # dataset preprocessing
     # odeificare text_to_graph per avere in input una sola frase
     # aggiungere al grafo creato un super nodo che rappresenta la domanda
-    dataset[train_name] = dataset[train_name].map(lambda example: {'graph': text_to_graph(3, example[question_name])})
-    dataset[eval_name] = dataset[eval_name].map(lambda example: {'graph': text_to_graph(3, example[question_name])})
+    dataset[train_name] = dataset[train_name].map(lambda example: {'graph': text_to_graph(2, example[question_name])})
+    dataset[eval_name] = dataset[eval_name].map(lambda example: {'graph': text_to_graph(2, example[question_name])})
 
     # tokenization
     dataset[train_name] = dataset[train_name].map(lambda example: tokenizer(example[question_name], padding='max_length', truncation=True, max_length=512), batched=True)
     dataset[eval_name] = dataset[eval_name].map(lambda example: tokenizer(example[question_name], padding='max_length', truncation=True, max_length=512), batched=True)
 
+
+
     #model creation
     model = T5KILForConditionalGeneration
-    gnnqa = GNNQA(model)
+    gnnqa = GNNQA()
     trainer_args = {'max_epochs': 1, 'gpus': 1}
-    trainer = Trainer(model=gnnqa, args=trainer_args, train_dataset=dataset[train_name], eval_dataset=dataset[eval_name])
+    trainer = Trainer()
+    trainer.fit(model=gnnqa, train_dataloaders=dataset[train_name], val_dataloaders=dataset[eval_name])
 
     trainer.train()
 

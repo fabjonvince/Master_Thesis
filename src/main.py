@@ -55,7 +55,7 @@ def main(args):
 
 
     #model creation
-    model = T5KILForConditionalGeneration
+    model = T5KILForConditionalGeneration()
     gnnqa = GNNQA()
     trainer_args = {'max_epochs': 1, 'gpus': 1}
     trainer = Trainer()

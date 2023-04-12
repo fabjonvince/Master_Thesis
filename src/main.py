@@ -56,8 +56,8 @@ def main(args):
 
 
     #model creation
-    #model = T5KILForConditionalGeneration.from_pretrained('t5-base')
-    gnnqa = GNNQA()
+    model = T5KILForConditionalGeneration.from_pretrained('t5-base')
+    gnnqa = GNNQA(model)
     trainer_args = {'max_epochs': 1, 'gpus': 1}
     trainer = Trainer()
     trainer.fit(model=gnnqa, train_dataloaders=dataset[train_name], val_dataloaders=dataset[eval_name])

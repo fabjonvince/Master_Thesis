@@ -1,5 +1,8 @@
 import pytorch_lightning as pl
 import torch
+from torch import nn
+from transformers import AutoConfig, T5ForConditionalGeneration
+
 from t5 import T5KILForConditionalGeneration
 
 
@@ -7,16 +10,12 @@ class GNNQA(pl.LightningModule):
     def __init__(self):
         super().__init__()
         self.model = T5KILForConditionalGeneration
-        self.pom = torch.nn.Linear(2,2)
+        #self.pom = torch.nn.Linear(2,2)
 
     def forward(self, input_ids, attention_mask=None, labels=None):
 
         print('training step')
-        output = self.model(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            labels=labels
-        )
+        #output = self.model(input_ids=input_ids,attention_mask=attention_mask,labels=labels)
         exit()
         return output.loss, output.logits
 
@@ -25,8 +24,8 @@ class GNNQA(pl.LightningModule):
 
         print('training step ')
         print(batch.keys())
-        print('\n title: ', batch['title'])
-        print('\n graph: ', batch['graph'])
+        #print('\n title: ', batch['title'])
+        #print('\n graph: ', batch['graph'])
         #print('\n answers: ', batch['answers'])
         exit()
         input_ids = batch['input_ids']
@@ -36,9 +35,8 @@ class GNNQA(pl.LightningModule):
 
         return loss
 
-
     def configure_optimizers(self):
-        return torch.optim.SGD(self.pom.parameters(), lr=0.1)
+        return torch.optim.SGD(self.parameters(), lr=0.1)
 
     def test_step(self, batch, batch_idx):
         return {"loss": torch.tensor(1.0)}

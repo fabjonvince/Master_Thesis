@@ -8,10 +8,11 @@ from data import get_dataset
 from model import GNNQA
 from t5 import T5KILForConditionalGeneration
 from pytorch_lightning import Trainer
+from keybert import KeyBERT
 
 argparser = argparse.ArgumentParser()
 argparser.add_argument('--dataset', type=str, default='eli5', help='Dataset to use')
-argparser.add_argument('--train_samples', type=int, default=1000, help='Number of train samples')
+argparser.add_argument('--train_samples', type=int, default=10, help='Number of train samples')
 name_mapping = {
 "eli5": ("train_eli5", "validation_eli5", "test_eli5", "title")
 }
@@ -22,6 +23,9 @@ def main(args):
     print("In Main")
 
     tokenizer = T5Tokenizer.from_pretrained('t5-base')
+    new_tokens = ['<S-ENT>', '<T-ENT>']
+    tokenizer.add_tokens(new_tokens)
+
 
     #load dataset
     dataset = get_dataset(args.dataset)
@@ -31,16 +35,13 @@ def main(args):
     test_name = dataset_columns[2]
     question_name = dataset_columns[3]
 
-    # prova con una singola parola
-    print(dataset[train_name][0][question_name].split())
-    triplets = text_to_graph(2, dataset[train_name][0][question_name].split()[4])
-    print(triplets)
-    exit()
+    # prova con una singola frase
+    #triplets = text_to_graph(2, dataset[train_name][0][question_name])
 
 
     # dataset sampling
     dataset[train_name] = dataset[train_name].shuffle(seed=42).select(range(args.train_samples))
-    dataset[eval_name] = dataset[eval_name].shuffle(seed=42).select(range(100))
+    dataset[eval_name] = dataset[eval_name].shuffle(seed=42).select(range(10))
 
     # dataset preprocessing
     # odeificare text_to_graph per avere in input una sola frase
@@ -55,7 +56,7 @@ def main(args):
 
 
     #model creation
-    model = T5KILForConditionalGeneration()
+    #model = T5KILForConditionalGeneration.from_pretrained('t5-base')
     gnnqa = GNNQA()
     trainer_args = {'max_epochs': 1, 'gpus': 1}
     trainer = Trainer()

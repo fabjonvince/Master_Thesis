@@ -7,9 +7,9 @@ from t5 import T5KILForConditionalGeneration
 
 
 class GNNQA(pl.LightningModule):
-    def __init__(self):
+    def __init__(self, model=None):
         super().__init__()
-        self.model = T5KILForConditionalGeneration
+        self.model = model
         #self.pom = torch.nn.Linear(2,2)
 
     def forward(self, input_ids, attention_mask=None, labels=None):

@@ -1,46 +1,85 @@
 import pytorch_lightning as pl
 import torch
-from torch import nn
-from transformers import AutoConfig, T5ForConditionalGeneration
-
-from t5 import T5KILForConditionalGeneration
+from torch import Tensor, tensor
 
 
 class GNNQA(pl.LightningModule):
     def __init__(self, model=None):
         super().__init__()
         self.model = model
-        #self.pom = torch.nn.Linear(2,2)
 
-    def forward(self, input_ids, attention_mask=None, labels=None):
+    def forward(self,
+                input_ids,
+                attention_mask,
+                labels=None,
+                graph=None
+                ):
 
-        print('training step')
-        #output = self.model(input_ids=input_ids,attention_mask=attention_mask,labels=labels)
+        print('Forward step')
+        output = self.model(input_ids=input_ids, attention_mask=attention_mask, labels=labels, graph=graph)
+        print('bbbbbbbbbbbbbbbb')
         exit()
         return output.loss, output.logits
-
 
     def training_step(self, batch, batch_idx):
 
         print('training step ')
-        print(batch.keys())
-        #print('\n title: ', batch['title'])
-        #print('\n graph: ', batch['graph'])
-        #print('\n answers: ', batch['answers'])
-        exit()
+        #'q_id = id domanda
+        #title = question
+        #selftext = text with additional information
+        #document = vuoto
+        #subreddit = direttive output es. explain like im five
+        #answers
+        #title_urls = url, vuoto
+        #selftext_urls = url, vuoto
+        #answers_urls = url delle risposte
+        #answer_tok = tokenizzate answer
+
         input_ids = batch['input_ids']
+        input_ids = tensor(input_ids, dtype=torch.int, device='cuda:0')
+        #input_ids = Tensor(input_ids)
         attention_mask = batch['attention_mask']
-        labels = batch['target']
-        loss, logits = self(input_ids, attention_mask, labels)
+        attention_mask = tensor(attention_mask, dtype=torch.int, device='cuda:0')
+        labels = batch['answer_tok']['input_ids']
+        graph = batch['graph']
+
+        loss = self(input_ids, attention_mask, labels, graph)[0]
 
         return loss
 
     def configure_optimizers(self):
         return torch.optim.SGD(self.parameters(), lr=0.1)
 
-    def test_step(self, batch, batch_idx):
-        return {"loss": torch.tensor(1.0)}
 
+class T5DataModule(pl.LightningDataModule):
+    def __init__(self, tokenizer, dataset, batch_size=1, args=None, name_mapping=None):
+        super().__init__()
+
+        self.tokenizer = tokenizer
+        self.dataset = dataset
+        self.batch_size = batch_size
+        self.args = args
+
+        dataset_columns = name_mapping.get(args.dataset, None)
+        self.train_name = dataset_columns[0]
+        self.eval_name = dataset_columns[1]
+        self.test_name = dataset_columns[2]
+        self.question_name = dataset_columns[3]
+        self.answers_name = dataset_columns[4]
+
+        self.dataset = self.dataset.map(lambda example: self.tokenizer(example[self.answers_name]['text'], padding='max_length', truncation=True, max_length=512, return_tensors='pt'))
+        self.dataset = self.dataset.map(lambda example: {'answer_tok': self.tokenizer(example[self.question_name], padding='max_length', truncation=True, max_length=512, return_tensors='pt')})
+
+
+    def train_dataloader(self):
+        return torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size)
+
+    """
+    def val_dataloader(self):
+        return torch.utils.data.DataLoader(self.dataset['validation'], batch_size=self.batch_size)
+
+    def test_dataloader(self):
+        return torch.utils.data.DataLoader(self.dataset['test'], batch_size=self.batch_size)"""
 
 
 """

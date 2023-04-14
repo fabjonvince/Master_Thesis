@@ -5,22 +5,20 @@ import torch
 from torch.nn import CrossEntropyLoss
 from torch.utils.checkpoint import checkpoint
 from transformers import T5PreTrainedModel, T5Config
-from torch import nn
+from torch import nn, Tensor, tensor
 from transformers.modeling_outputs import Seq2SeqLMOutput, BaseModelOutput, BaseModelOutputWithPastAndCrossAttentions
 from transformers.models.t5.modeling_t5 import T5Block, T5LayerNorm
 from transformers.utils.model_parallel_utils import get_device_map, assert_device_map
+
 
 #from model import CustomKilLayer
 
 
 class CustomKilLayer(torch.nn.Module):
-    def __init__(self,
-                 n_rel, # Numero di tutte le possibili relazioni
-                 edges,
-                 ):
+    #def __init__(self,n_rel, # Numero di tutte le possibili relazioni edges,  ):
+    def __init__(self):
         super().__init__()
-        print('KIL layer')
-        self.register_parameter("wrel", torch.nn.Parameter(torch.Tensor(1, n_rel)))
+        #self.register_parameter("wrel", torch.nn.Parameter(torch.Tensor(1, n_rel)))
 
     def customCRW(
             self,
@@ -95,6 +93,8 @@ class CustomKilLayer(torch.nn.Module):
         # edges shape [Nwords X Nwords X Nrelation]
         # A shape [Nrelation X Nwords X Nwords]
 
+        print('oreolm layer')
+        exit()
         # relation prediction
         prels = self.relation_pred(inputs_embeds[token_index], rels)
         t = self.customCRW(A, node_index, prels, self.tprev, self.wrel)
@@ -106,8 +106,6 @@ class CustomKilLayer(torch.nn.Module):
 class T5KILStack(T5PreTrainedModel):
     def __init__(self, config, embed_tokens=None):
         super().__init__(config)
-        print('stack')
-        exit()
         self.embed_tokens = embed_tokens
         self.is_decoder = config.is_decoder
 
@@ -116,7 +114,7 @@ class T5KILStack(T5PreTrainedModel):
             layer = T5Block(config, has_relative_attention_bias=bool(i == 0))
             layers.append(layer)
             if i in config.layer_with_kil:
-                layer = CustomKilLayer(config.n_rels)
+                layer = CustomKilLayer()
                 layers.append(layer)
 
         self.block = nn.ModuleList(
@@ -268,6 +266,7 @@ class T5KILStack(T5PreTrainedModel):
         hidden_states = self.dropout(inputs_embeds)
 
         for i, (layer_module, past_key_value) in enumerate(zip(self.block, past_key_values)):
+            print(i)
             layer_head_mask = head_mask[i]
             cross_attn_layer_head_mask = cross_attn_head_mask[i]
             # Model parallel
@@ -394,6 +393,7 @@ class T5KILForConditionalGeneration(T5PreTrainedModel):
 
     def __init__(self, config: T5Config):
         super().__init__(config)
+
         self.model_dim = config.d_model
 
         self.shared = nn.Embedding(config.vocab_size, config.d_model)
@@ -402,12 +402,14 @@ class T5KILForConditionalGeneration(T5PreTrainedModel):
         encoder_config.is_decoder = False
         encoder_config.use_cache = False
         encoder_config.is_encoder_decoder = False
+        encoder_config.layer_with_kil = [1, 2]
         self.encoder = T5KILStack(encoder_config, self.shared)
 
         decoder_config = copy.deepcopy(config)
         decoder_config.is_decoder = True
         decoder_config.is_encoder_decoder = False
         decoder_config.num_layers = config.num_decoder_layers
+        decoder_config.layer_with_kil = [1, 2]
         self.decoder = T5KILStack(decoder_config, self.shared)
 
         self.lm_head = nn.Linear(config.d_model, config.vocab_size, bias=False)
@@ -481,6 +483,7 @@ class T5KILForConditionalGeneration(T5PreTrainedModel):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        graph = None,
     ) -> Union[Tuple[torch.FloatTensor], Seq2SeqLMOutput]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
@@ -507,6 +510,7 @@ class T5KILForConditionalGeneration(T5PreTrainedModel):
         >>> print(tokenizer.decode(outputs[0], skip_special_tokens=True))
         >>> # studies have shown that owning a dog is good for you.
         ```"""
+
         use_cache = use_cache if use_cache is not None else self.config.use_cache
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
@@ -533,6 +537,7 @@ class T5KILForConditionalGeneration(T5PreTrainedModel):
                 hidden_states=encoder_outputs[1] if len(encoder_outputs) > 1 else None,
                 attentions=encoder_outputs[2] if len(encoder_outputs) > 2 else None,
             )
+
 
         hidden_states = encoder_outputs[0]
 

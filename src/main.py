@@ -1,5 +1,7 @@
 import argparse
+import pdb
 
+import numpy as np
 from transformers import T5Tokenizer
 
 from preprocess import text_to_graph, print_triplets
@@ -10,15 +12,15 @@ from pytorch_lightning import Trainer
 
 argparser = argparse.ArgumentParser()
 argparser.add_argument('--dataset', type=str, default='eli5', help='Dataset to use')
-argparser.add_argument('--train_samples', type=int, default=10, help='Number of train samples')
-argparser.add_argument('--layer_kil', type=int, default=[1, 2], help='Layers with KIL')
+argparser.add_argument('--train_samples', type=int, default=1, help='Number of train samples')
+argparser.add_argument('--layer_with_kil', type=int, default=[1, 2], help='Layers with KIL')
 name_mapping = {
 "eli5": ("train_eli5", "validation_eli5", "test_eli5", "title", "answers")
 }
 
 
 def main(args):
-    #pdb.set_trace()
+    pdb.set_trace()
     print("In Main")
 
     tokenizer = T5Tokenizer.from_pretrained('t5-base')
@@ -36,11 +38,11 @@ def main(args):
     answers_name = dataset_columns[4]
 
     # prova con una singola frase
-    #triplets = text_to_graph(2, dataset[train_name][0][question_name])
+    triplets = text_to_graph(2, dataset[train_name][0][question_name])
 
     # dataset sampling
     dataset[train_name] = dataset[train_name].shuffle(seed=42).select(range(args.train_samples))
-    dataset[eval_name] = dataset[eval_name].shuffle(seed=42).select(range(10))
+    dataset[eval_name] = dataset[eval_name].shuffle(seed=42).select(range(args.train_samples))
 
     # dataset preprocessing
     # odeificare text_to_graph per avere in input una sola frase
@@ -55,8 +57,14 @@ def main(args):
     #dataload
     train_dataload = T5DataModule(tokenizer, dataset[train_name], batch_size=1, args=args, name_mapping=name_mapping)
 
+    nrel = 5 # to do: count number of relations
+    setattr(args, 'nrel', nrel)
+
+    nnodes = len(np.unique(np.concatenate([item for triple in dataset[train_name]['graph'] for item in triple])))
+    setattr(args, 'nnodes', nnodes)
+
     #model creation
-    model = T5KILForConditionalGeneration.from_pretrained('t5-base')
+    model = T5KILForConditionalGeneration.from_pretrained('t5-base', args)
     gnnqa = GNNQA(model)
     trainer_args = {'max_epochs': 1, 'gpus': 1}
 

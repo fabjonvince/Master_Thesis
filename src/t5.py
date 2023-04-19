@@ -7,7 +7,8 @@ from torch.utils.checkpoint import checkpoint
 from transformers import T5PreTrainedModel, T5Config
 from torch import nn, Tensor, tensor
 from transformers.modeling_outputs import Seq2SeqLMOutput, BaseModelOutput, BaseModelOutputWithPastAndCrossAttentions
-from transformers.models.t5.modeling_t5 import T5Block, T5LayerNorm
+from transformers.models.t5.modeling_t5 import T5Block, T5LayerNorm, T5LayerSelfAttention, T5LayerFF, \
+    T5LayerCrossAttention
 from transformers.utils.model_parallel_utils import get_device_map, assert_device_map
 
 
@@ -15,10 +16,13 @@ from transformers.utils.model_parallel_utils import get_device_map, assert_devic
 
 
 class CustomKilLayer(torch.nn.Module):
-    #def __init__(self,n_rel, # Numero di tutte le possibili relazioni edges,  ):
-    def __init__(self):
+
+    def __init__(self,
+                 n_rel, # Numero di tutte le possibili relazioni
+                 n_nodes):
         super().__init__()
-        #self.register_parameter("wrel", torch.nn.Parameter(torch.Tensor(1, n_rel)))
+        self.register_parameter("wrel", torch.nn.Parameter(torch.Tensor(1, n_rel)))
+        self.tprev = torch.zeros(n_nodes, n_nodes)
 
     def customCRW(
             self,
@@ -27,8 +31,8 @@ class CustomKilLayer(torch.nn.Module):
             prel: torch.Tensor,  # shape[NNodes X Nrel X 1]
             tprev: torch.Tensor,  # shape[NNodes X NNodes X 1]
             wrel: torch.Tensor,  # shape[NRel X 1]
-
     ):
+
         Ac = torch.sum((wrel[None, :] * prel[node_index]).squeeze() * A, dim=0)  # shape NNodes X NNodes
         D = torch.diag(torch.sum(Ac, dim=-1, keepdim=True).squeeze())  # shape NNodes X NNodes
         M = torch.linalg.inv(D) * Ac  # NNodes X NNodes
@@ -43,7 +47,7 @@ class CustomKilLayer(torch.nn.Module):
         ### relation prediction ###
 
         # project reletion token's embedding into key memory
-        lin_proj = torch.nn.Linear(inputs.size(-1), inputs.size(-1))
+        lin_proj = torch.nn.Linear(inputs.size(-1), inputs.size(-1), device='cuda:0')
         q = lin_proj(inputs)  # torch.nn.Linear()
 
         # normalization
@@ -64,6 +68,7 @@ class CustomKilLayer(torch.nn.Module):
             node_embds,
             residual_embds
     ):
+
         ### knowledge-injected LM ###
 
         # compute residual connection
@@ -82,24 +87,59 @@ class CustomKilLayer(torch.nn.Module):
         return Vn
 
     def forward(self,
-                inputs_embeds, # embeddings of all the tokens in the sentece
-                token_index, # index of the token
-                node_index, # index of the root node
-                edges, # embeddings of all the nodes
-                A,
-                rels = None, # relations embeddings
+                    hidden_states,
+                    attention_mask=None,
+                    position_bias=None,
+                    encoder_hidden_states=None,
+                    encoder_attention_mask=None,
+                    encoder_decoder_position_bias=None,
+                    layer_head_mask=None,
+                    cross_attn_layer_head_mask=None,
+                    past_key_value=None,
+                    use_cache=None,
+                    output_attentions=None,
+                    token_index=None,  # index of the token
+                    node_index=None,  # index of the root node
+                    edges=None,  # embeddings of all the nodes
+                    A=None,
+                    rels=None  # relations embeddings
                 ):
+
+        print(edges[0][0])
+        exit()
+
+        self.execute_oreolm(
+            inputs_embeds=hidden_states,
+            token_index=token_index,
+            node_index=node_index,
+            edges=edges,
+            A=A,
+            rels=rels
+            )
+
+
+    def execute_oreolm (self,
+                        inputs_embeds, # embeddings of all the tokens in the sentence
+                        token_index, # index of the token
+                        node_index, # index of the root node
+                        edges, # embeddings of all the nodes, Vent
+                        A,
+                        rels = None # relations embeddings
+                    ):
         # token_embs shape [Nwords X dim_embeddings = 768]
         # edges shape [Nwords X Nwords X Nrelation]
         # A shape [Nrelation X Nwords X Nwords]
 
         print('oreolm layer')
-        exit()
+
         # relation prediction
         prels = self.relation_pred(inputs_embeds[token_index], rels)
+        # contextualized random walk
         t = self.customCRW(A, node_index, prels, self.tprev, self.wrel)
         self.tprev = t
+        # knowledge integration
         new_embds = self.knowledge_integration(t, edges, edges[node_index])
+
         return new_embds
 
 
@@ -111,10 +151,10 @@ class T5KILStack(T5PreTrainedModel):
 
         layers = []
         for i in range(config.num_layers):
-            layer = T5Block(config, has_relative_attention_bias=bool(i == 0))
+            layer = T5KILBlock(config, has_relative_attention_bias=bool(i == 0))
             layers.append(layer)
-            if i in config.layer_with_kil:
-                layer = CustomKilLayer()
+            if self.is_decoder == False and i in config.layer_with_kil:
+                layer = CustomKilLayer(n_rel=config.nrel, n_nodes=config.nnodes)
                 layers.append(layer)
 
         self.block = nn.ModuleList(
@@ -184,6 +224,7 @@ class T5KILStack(T5PreTrainedModel):
         output_attentions=None,
         output_hidden_states=None,
         return_dict=None,
+        graph=None,
     ):
         # Model parallel
         if self.model_parallel:
@@ -266,7 +307,8 @@ class T5KILStack(T5PreTrainedModel):
         hidden_states = self.dropout(inputs_embeds)
 
         for i, (layer_module, past_key_value) in enumerate(zip(self.block, past_key_values)):
-            print(i)
+
+
             layer_head_mask = head_mask[i]
             cross_attn_layer_head_mask = cross_attn_head_mask[i]
             # Model parallel
@@ -323,6 +365,7 @@ class T5KILStack(T5PreTrainedModel):
                     past_key_value=past_key_value,
                     use_cache=use_cache,
                     output_attentions=output_attentions,
+                    edges=graph,
                 )
 
             # layer_outputs is a tuple with:
@@ -391,25 +434,25 @@ class T5KILForConditionalGeneration(T5PreTrainedModel):
         r"decoder.block.0.layer.1.EncDecAttention.relative_attention_bias.weight",
     ]
 
-    def __init__(self, config: T5Config):
+    def __init__(self, config: T5Config, args=None):
         super().__init__(config)
 
         self.model_dim = config.d_model
-
         self.shared = nn.Embedding(config.vocab_size, config.d_model)
 
         encoder_config = copy.deepcopy(config)
         encoder_config.is_decoder = False
         encoder_config.use_cache = False
         encoder_config.is_encoder_decoder = False
-        encoder_config.layer_with_kil = [1, 2]
+        encoder_config.layer_with_kil = args.layer_with_kil
+        encoder_config.nrel = args.nrel
+        encoder_config.nnodes = args.nnodes
         self.encoder = T5KILStack(encoder_config, self.shared)
 
         decoder_config = copy.deepcopy(config)
         decoder_config.is_decoder = True
         decoder_config.is_encoder_decoder = False
         decoder_config.num_layers = config.num_decoder_layers
-        decoder_config.layer_with_kil = [1, 2]
         self.decoder = T5KILStack(decoder_config, self.shared)
 
         self.lm_head = nn.Linear(config.d_model, config.vocab_size, bias=False)
@@ -530,6 +573,7 @@ class T5KILForConditionalGeneration(T5PreTrainedModel):
                 output_attentions=output_attentions,
                 output_hidden_states=output_hidden_states,
                 return_dict=return_dict,
+                graph=graph,
             )
         elif return_dict and not isinstance(encoder_outputs, BaseModelOutput):
             encoder_outputs = BaseModelOutput(
@@ -663,3 +707,117 @@ class T5KILForConditionalGeneration(T5PreTrainedModel):
 
             reordered_decoder_past = reordered_decoder_past + (reordered_layer_past_states,)
         return reordered_decoder_past
+
+
+
+
+class T5KILBlock(nn.Module):
+    def __init__(self, config, has_relative_attention_bias=False):
+        super().__init__()
+        self.is_decoder = config.is_decoder
+        self.layer = nn.ModuleList()
+        self.layer.append(T5LayerSelfAttention(config, has_relative_attention_bias=has_relative_attention_bias))
+        if self.is_decoder:
+            self.layer.append(T5LayerCrossAttention(config))
+
+        self.layer.append(T5LayerFF(config))
+
+    def forward(
+        self,
+        hidden_states,
+        attention_mask=None,
+        position_bias=None,
+        encoder_hidden_states=None,
+        encoder_attention_mask=None,
+        encoder_decoder_position_bias=None,
+        layer_head_mask=None,
+        cross_attn_layer_head_mask=None,
+        past_key_value=None,
+        use_cache=False,
+        output_attentions=False,
+        return_dict=True,
+        edges=None,
+    ):
+        if past_key_value is not None:
+            expected_num_past_key_values = 2 if encoder_hidden_states is None else 4
+
+            if len(past_key_value) != expected_num_past_key_values:
+                raise ValueError(
+                    f"There should be {expected_num_past_key_values} past states. "
+                    f"{'2 (past / key) for cross attention. ' if expected_num_past_key_values == 4 else ''}"
+                    f"Got {len(past_key_value)} past key / value states"
+                )
+
+            self_attn_past_key_value = past_key_value[:2]
+            cross_attn_past_key_value = past_key_value[2:]
+        else:
+            self_attn_past_key_value, cross_attn_past_key_value = None, None
+
+        self_attention_outputs = self.layer[0](
+            hidden_states,
+            attention_mask=attention_mask,
+            position_bias=position_bias,
+            layer_head_mask=layer_head_mask,
+            past_key_value=self_attn_past_key_value,
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+        )
+        hidden_states, present_key_value_state = self_attention_outputs[:2]
+        attention_outputs = self_attention_outputs[2:]  # Keep self-attention outputs and relative position weights
+
+        # clamp inf values to enable fp16 training
+        if hidden_states.dtype == torch.float16 and torch.isinf(hidden_states).any():
+            clamp_value = torch.finfo(hidden_states.dtype).max - 1000
+            hidden_states = torch.clamp(hidden_states, min=-clamp_value, max=clamp_value)
+
+        do_cross_attention = self.is_decoder and encoder_hidden_states is not None
+        if do_cross_attention:
+            # the actual query length is unknown for cross attention
+            # if using past key value states. Need to inject it here
+            if present_key_value_state is not None:
+                query_length = present_key_value_state[0].shape[2]
+            else:
+                query_length = None
+
+            cross_attention_outputs = self.layer[1](
+                hidden_states,
+                key_value_states=encoder_hidden_states,
+                attention_mask=encoder_attention_mask,
+                position_bias=encoder_decoder_position_bias,
+                layer_head_mask=cross_attn_layer_head_mask,
+                past_key_value=cross_attn_past_key_value,
+                query_length=query_length,
+                use_cache=use_cache,
+                output_attentions=output_attentions,
+            )
+            hidden_states = cross_attention_outputs[0]
+
+            # clamp inf values to enable fp16 training
+            if hidden_states.dtype == torch.float16 and torch.isinf(hidden_states).any():
+                clamp_value = torch.finfo(hidden_states.dtype).max - 1000
+                hidden_states = torch.clamp(hidden_states, min=-clamp_value, max=clamp_value)
+
+            # Combine self attn and cross attn key value states
+            if present_key_value_state is not None:
+                present_key_value_state = present_key_value_state + cross_attention_outputs[1]
+
+            # Keep cross-attention outputs and relative position weights
+            attention_outputs = attention_outputs + cross_attention_outputs[2:]
+
+        # Apply Feed Forward layer
+        hidden_states = self.layer[-1](hidden_states)
+
+        # clamp inf values to enable fp16 training
+        if hidden_states.dtype == torch.float16 and torch.isinf(hidden_states).any():
+            clamp_value = torch.finfo(hidden_states.dtype).max - 1000
+            hidden_states = torch.clamp(hidden_states, min=-clamp_value, max=clamp_value)
+
+        outputs = (hidden_states,)
+
+        if use_cache:
+            outputs = outputs + (present_key_value_state,) + attention_outputs
+        else:
+            outputs = outputs + attention_outputs
+
+        return outputs  # hidden-states, present_key_value_states, (self-attention position bias), (self-attention weights), (cross-attention position bias), (cross-attention weights)
+

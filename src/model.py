@@ -2,8 +2,8 @@ import pdb
 
 import pytorch_lightning as pl
 import torch
-from sklearn.preprocessing import LabelEncoder
 from torch import tensor
+
 
 
 class GNNQA(pl.LightningModule):
@@ -16,11 +16,12 @@ class GNNQA(pl.LightningModule):
                 input_ids,
                 attention_mask,
                 labels=None,
-                edges=None
+                edges=None,
+                rel=None
                 ):
 
         print('Forward step')
-        output = self.model(input_ids=input_ids, attention_mask=attention_mask, labels=labels, edges=edges)
+        output = self.model(input_ids=input_ids, attention_mask=attention_mask, labels=labels, edges=edges, rel=rel)
         print('bbbbbbbbbbbbbbbb')
         exit()
         return output.loss, output.logits
@@ -46,10 +47,11 @@ class GNNQA(pl.LightningModule):
         attention_mask = tensor(attention_mask, dtype=torch.int, device=self.device)
         labels = batch['answer_tok']['input_ids']
         edges = batch['graph']
+        rel = batch['rel']
+        nodes = batch['nodes']
 
 
-
-        loss = self(input_ids=input_ids, attention_mask=attention_mask, labels=labels, edges=edges)[0]
+        loss = self(input_ids=input_ids, attention_mask=attention_mask, labels=labels, edges=edges, rel=rel)[0]
 
         return loss
 
@@ -73,12 +75,10 @@ class T5DataModule(pl.LightningDataModule):
         self.question_name = dataset_columns[3]
         self.answers_name = dataset_columns[4]
 
-        self.dataset = self.dataset.map(lambda example: self.tokenizer(example[self.answers_name]['text'], padding='max_length', truncation=True, max_length=512, return_tensors='pt'))
-        self.dataset = self.dataset.map(lambda example: {'answer_tok': self.tokenizer(example[self.question_name], padding='max_length', truncation=True, max_length=512, return_tensors='pt')})
 
 
     def train_dataloader(self):
-        return torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size)
+        return torch.utils.data.DataLoader(self.dataset[self.train_name], batch_size=self.batch_size)
 
     """
     def val_dataloader(self):

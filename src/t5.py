@@ -224,7 +224,8 @@ class T5KILStack(T5PreTrainedModel):
         output_attentions=None,
         output_hidden_states=None,
         return_dict=None,
-        graph=None,
+        edges=None,
+        rels=None,
     ):
         # Model parallel
         if self.model_parallel:
@@ -365,7 +366,8 @@ class T5KILStack(T5PreTrainedModel):
                     past_key_value=past_key_value,
                     use_cache=use_cache,
                     output_attentions=output_attentions,
-                    edges=graph,
+                    edges=edges,
+                    rels=rels,
                 )
 
             # layer_outputs is a tuple with:
@@ -737,6 +739,7 @@ class T5KILBlock(nn.Module):
         output_attentions=False,
         return_dict=True,
         edges=None,
+        rels=None,
     ):
         if past_key_value is not None:
             expected_num_past_key_values = 2 if encoder_hidden_states is None else 4

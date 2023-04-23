@@ -54,8 +54,13 @@ def get_entities(text, N, cont=0):
         url = "https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json&language=en&type=item&search=" + text
         response = requests.get(url)
         data = json.loads(response.text)
-        if N==1:
-            entities = np.unique([item['label'] for item in data['search'] if 'search' in data])
+
+        if 'search' in data:
+            for item in data['search']:
+                if item['label'] not in entities:
+                    entities.append(item['label'])
+
+        entities = np.unique(entities)
 
     return entities
 
@@ -76,3 +81,40 @@ def convert_to_triplets(nodes):
 def print_triplets(triplets):
     for triplet in triplets:
         print(triplet[0] + " -> " + triplet[1] + " -> " + triplet[2])
+
+
+def graph_to_nodes(triplets):
+    nodes = np.unique([item for rel in triplets for item in rel])
+
+    return nodes
+
+
+def graph_to_rel(triplets):
+    relations = {}
+
+    for rel in triplets:
+        if rel[0] in relations.keys():
+            if rel[1] not in relations[rel[0]]:
+                relations.update({rel[0]: np.append(relations[rel[0]], rel[1])})
+        else:
+            relations[rel[0]] = np.array(rel[1])
+
+        if rel[1] in relations.keys():
+            if rel[1] not in relations[rel[0]]:
+                relations.update({rel[1]: np.append(relations[rel[1]], rel[0])})
+                relations.update({rel[1]: np.append(relations[rel[1]], rel[2])})
+        else:
+            relations[rel[1]] = np.array(rel[0])
+            relations.update({rel[1]: np.append(relations[rel[1]], rel[2])})
+
+        if rel[2] in relations.keys():
+            if rel[1] not in relations[rel[0]]:
+                relations.update({rel[2]: np.append(relations[rel[2]], rel[1])})
+        else:
+            relations[rel[2]] = np.array(rel[1])
+
+    return relations
+
+
+
+

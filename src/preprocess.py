@@ -1,6 +1,8 @@
 import pdb
+import re
 
 import numpy as np
+import pandas as pd
 import requests
 import json
 from keybert import KeyBERT
@@ -11,7 +13,6 @@ def text_to_graph(
         text #domanda
         ):
 
-    #pdb.set_trace()
     kw_model = KeyBERT()
     kw = kw_model.extract_keywords(text)
     txt = [kw[i][0].lower() for i in range(len(kw))]
@@ -47,10 +48,13 @@ def get_entities(text, N, cont=0):
             if 'search' in data:
                 for item in data['search']:
                     if item['label'] not in entities:
-                        sub_entities = get_entities(item['label'], N-1, cont + 1)
-                        entities.append([word, [item['label'], sub_entities]])
+                        new_item = re.sub(r'[\W+]', '', str(item['label']))
+                        if new_item != "":
+                            sub_entities = get_entities(item['label'], N-1, cont + 1)
+                            entities.append([word, [item['label'], sub_entities]])
 
     else:
+
         url = "https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json&language=en&type=item&search=" + text
         response = requests.get(url)
         data = json.loads(response.text)
@@ -58,7 +62,9 @@ def get_entities(text, N, cont=0):
         if 'search' in data:
             for item in data['search']:
                 if item['label'] not in entities:
-                    entities.append(item['label'])
+                    new_item = re.sub(r'[\W+]', '', str(item['label']))
+                    if new_item != "":
+                        entities.append(item['label'])
 
         entities = np.unique(entities)
 
@@ -91,30 +97,52 @@ def graph_to_nodes(triplets):
 
 def graph_to_rel(triplets):
     relations = {}
+    nodes = np.unique([item for rel in triplets for item in rel])
 
     for rel in triplets:
-        if rel[0] in relations.keys():
-            if rel[1] not in relations[rel[0]]:
-                relations.update({rel[0]: np.append(relations[rel[0]], rel[1])})
-        else:
-            relations[rel[0]] = np.array(rel[1])
 
         if rel[1] in relations.keys():
-            if rel[1] not in relations[rel[0]]:
-                relations.update({rel[1]: np.append(relations[rel[1]], rel[0])})
-                relations.update({rel[1]: np.append(relations[rel[1]], rel[2])})
+            relations[rel[1]].append((rel[0], rel[2]))
         else:
-            relations[rel[1]] = np.array(rel[0])
-            relations.update({rel[1]: np.append(relations[rel[1]], rel[2])})
+            relations[rel[1]] = [(rel[0], rel[2])]
 
-        if rel[2] in relations.keys():
-            if rel[1] not in relations[rel[0]]:
-                relations.update({rel[2]: np.append(relations[rel[2]], rel[1])})
+    for node in nodes:
+        #vedere se dà errore e fare assegnazione prima volta
+        if "self_rel" in relations.keys():
+            relations["self_rel"].append((node, node))
         else:
-            relations[rel[2]] = np.array(rel[1])
+            relations["self_rel"] = [(node, node)]
 
     return relations
 
 
+def graph_to_edges(triplets):
+
+    edges = {}
+
+    for rel in triplets:
+
+        if rel[0] in edges.keys():
+            if rel[1] not in edges[rel[0]]:
+                edges[rel[0]].append(rel[1])
+        else:
+            edges[rel[0]] = [rel[1]]
+
+        if rel[2] in edges.keys():
+            if rel[1] not in edges[rel[2]]:
+                edges[rel[2]].append(rel[1])
+        else:
+            edges[rel[2]] = [rel[1]]
+
+    return edges
 
 
+def rel_to_adj(relations):
+    #controllare nuovo esito se giusto
+    g = {k: vs for k, vs in relations.items() if vs is not None}
+    edges = [(a, b) for k, bs in g.items() for a, b in bs]
+    df = pd.DataFrame(edges)
+    A = pd.crosstab(df[0], df[1])
+    A[A>=2] = 1
+
+    return A

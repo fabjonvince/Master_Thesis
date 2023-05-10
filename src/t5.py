@@ -100,20 +100,25 @@ class CustomKilLayer(torch.nn.Module):
                     output_attentions=None,
                     token_index=None,  # index of the token
                     node_index=None,  # index of the root node
-                    edges=None,  # embeddings of all the nodes
-                    A=None,
-                    rels=None  # relations embeddings
+                    graph=None, # graph of the sentence
+                    edges=None, # embeddings of all the nodes
+                    rel=None, # relations
+                    enc_rel=None, # relations embeddings
+                    adj=None, # adjacency matrix
                 ):
 
-        print(edges[0][0])
+        print(graph)
+        #print(edges[0][0])
+
         exit()
 
         self.execute_oreolm(
             inputs_embeds=hidden_states,
             token_index=token_index,
             node_index=node_index,
+            graph=graph,
             edges=edges,
-            A=A,
+            adj=adj,
             rels=rels
             )
 
@@ -224,8 +229,11 @@ class T5KILStack(T5PreTrainedModel):
         output_attentions=None,
         output_hidden_states=None,
         return_dict=None,
+        graph=None,
         edges=None,
-        rels=None,
+        rel=None,
+        enc_rel=None,
+        adj=None,
     ):
         # Model parallel
         if self.model_parallel:
@@ -366,8 +374,11 @@ class T5KILStack(T5PreTrainedModel):
                     past_key_value=past_key_value,
                     use_cache=use_cache,
                     output_attentions=output_attentions,
+                    graph=graph,
                     edges=edges,
-                    rels=rels,
+                    rel=rel,
+                    enc_rel=enc_rel,
+                    adj=adj,
                 )
 
             # layer_outputs is a tuple with:
@@ -528,7 +539,11 @@ class T5KILForConditionalGeneration(T5PreTrainedModel):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
-        graph = None,
+        graph=None,
+        edges=None,
+        rel=None,
+        enc_rel=None,
+        adj=None,
     ) -> Union[Tuple[torch.FloatTensor], Seq2SeqLMOutput]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
@@ -576,6 +591,10 @@ class T5KILForConditionalGeneration(T5PreTrainedModel):
                 output_hidden_states=output_hidden_states,
                 return_dict=return_dict,
                 graph=graph,
+                edges=edges,
+                rel=rel,
+                enc_rel=enc_rel,
+                adj=adj,
             )
         elif return_dict and not isinstance(encoder_outputs, BaseModelOutput):
             encoder_outputs = BaseModelOutput(
@@ -738,8 +757,11 @@ class T5KILBlock(nn.Module):
         use_cache=False,
         output_attentions=False,
         return_dict=True,
+        graph=None,
         edges=None,
-        rels=None,
+        rel=None,
+        enc_rel=None,
+        adj=None,
     ):
         if past_key_value is not None:
             expected_num_past_key_values = 2 if encoder_hidden_states is None else 4

@@ -7,28 +7,31 @@ from torch import tensor
 
 
 class GNNQA(pl.LightningModule):
-    def __init__(self, model=None):
+    def __init__(self, model=None, rel_model=None, nodes_model=None):
         super().__init__()
         self.model = model
+        self.rel_model = rel_model #sentence transformer
+        self.nodes_model = nodes_model  # sentence transformer
 
 
     def forward(self,
                 input_ids,
                 attention_mask,
                 labels=None,
+                graph=None,
                 edges=None,
-                rel=None
+                rel=None,
+                enc_rel=None,
+                adj=None,
                 ):
 
         print('Forward step')
-        output = self.model(input_ids=input_ids, attention_mask=attention_mask, labels=labels, edges=edges, rel=rel)
-        print('bbbbbbbbbbbbbbbb')
-        exit()
+        output = self.model(input_ids=input_ids, attention_mask=attention_mask, labels=labels, graph=graph, edges=edges, rel=rel, enc_rel=enc_rel, adj=adj)
+
         return output.loss, output.logits
 
     def training_step(self, batch, batch_idx):
 
-        pdb.set_trace()
         print('training step ')
         #'q_id = id domanda
         #title = question
@@ -46,12 +49,32 @@ class GNNQA(pl.LightningModule):
         attention_mask = batch['attention_mask']
         attention_mask = tensor(attention_mask, dtype=torch.int, device=self.device)
         labels = batch['answer_tok']['input_ids']
-        edges = batch['graph']
-        rel = batch['rel']
-        nodes = batch['nodes']
+
+        #passare al layer KIL ->
+
+        # dizionario con chiave parola nella domanda e valore=indice/i della parola nel testo
+
+        graph = batch['graph']
+
+        relations = batch['relations']
+        rel = {k: vs for k, vs in relations.items() if vs is not None}
+        enc_rel = []
+        # applicare sentence transformer a rel
+        for key in rel.keys():
+            enc_rel.append(self.rel_model.encode(rel[key]))
 
 
-        loss = self(input_ids=input_ids, attention_mask=attention_mask, labels=labels, edges=edges, rel=rel)[0]
+        edges = batch['edges']
+        edges = {k: vs for k, vs in edges.items() if vs is not None}
+        enc_edges = []
+        # applicare sentence transformer a nodes
+        for key in edges.keys():
+            enc_edges.append(self.nodes_model.encode(edges[key]))
+
+        adj = batch['adj']
+
+
+        loss = self(input_ids=input_ids, attention_mask=attention_mask, labels=labels, graph=graph, edges=enc_edges, rel=relations, enc_rel=enc_rel, adj=adj)[0]
 
         return loss
 

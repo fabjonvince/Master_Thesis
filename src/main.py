@@ -37,7 +37,6 @@ def main(args):
 
     #sistemare test set (non ridotto) e usato il map del validation invece che del test
 
-
     #load dataset
     if exists('dataset/eli5_10'):
 

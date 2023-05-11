@@ -107,10 +107,6 @@ class CustomKilLayer(torch.nn.Module):
                     adj=None, # adjacency matrix
                 ):
 
-        print(graph)
-        #print(edges[0][0])
-
-        exit()
 
         self.execute_oreolm(
             inputs_embeds=hidden_states,
@@ -119,7 +115,7 @@ class CustomKilLayer(torch.nn.Module):
             graph=graph,
             edges=edges,
             adj=adj,
-            rels=rels
+            rel=rel
             )
 
 
@@ -127,9 +123,10 @@ class CustomKilLayer(torch.nn.Module):
                         inputs_embeds, # embeddings of all the tokens in the sentence
                         token_index, # index of the token
                         node_index, # index of the root node
+                        graph, # graph of the sentence
                         edges, # embeddings of all the nodes, Vent
-                        A,
-                        rels = None # relations embeddings
+                        adj,
+                        rel # relations embeddings
                     ):
         # token_embs shape [Nwords X dim_embeddings = 768]
         # edges shape [Nwords X Nwords X Nrelation]
@@ -138,9 +135,9 @@ class CustomKilLayer(torch.nn.Module):
         print('oreolm layer')
 
         # relation prediction
-        prels = self.relation_pred(inputs_embeds[token_index], rels)
+        prels = self.relation_pred(inputs_embeds[token_index], rel)
         # contextualized random walk
-        t = self.customCRW(A, node_index, prels, self.tprev, self.wrel)
+        t = self.customCRW(adj, node_index, prels, self.tprev, self.wrel)
         self.tprev = t
         # knowledge integration
         new_embds = self.knowledge_integration(t, edges, edges[node_index])

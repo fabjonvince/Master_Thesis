@@ -16,7 +16,10 @@ from sentence_transformers import SentenceTransformer
 argparser = argparse.ArgumentParser()
 argparser.add_argument('--dataset', type=str, default='eli5', help='Dataset to use')
 argparser.add_argument('--train_samples', type=int, default=10, help='Number of train samples')
+argparser.add_argument('--val_samples', type=int, default=10, help='Number of validation samples')
+argparser.add_argument('--test_samples', type=int, default=10, help='Number of test samples')
 argparser.add_argument('--layer_with_kil', type=int, default=[1, 2], help='Layers with KIL')
+argparser.add_argument('--debug', action='store_true', help='Debug mode')
 name_mapping = {
 "eli5": ("train_eli5", "validation_eli5", "test_eli5", "title", "answers")
 }
@@ -43,13 +46,14 @@ def main(args):
         dataset = load_from_disk('dataset/eli5_10')
 
     else:
-
+        if args.debug:
+            pdb.set_trace()
         dataset = get_dataset(args.dataset)
 
         # dataset sampling
         dataset[train_name] = dataset[train_name].shuffle(seed=42).select(range(args.train_samples))
-        dataset[eval_name] = dataset[eval_name].shuffle(seed=42).select(range(args.train_samples))
-        dataset[test_name] = dataset[test_name].shuffle(seed=42).select(range(args.train_samples))
+        dataset[eval_name] = dataset[eval_name].shuffle(seed=42).select(range(args.val_samples))
+        dataset[test_name] = dataset[test_name].shuffle(seed=42).select(range(args.test_samples))
 
         dataset[train_name] = dataset[train_name].map(
             lambda example: tokenizer(example[answers_name]['text'], padding='max_length', truncation=True, max_length=512, return_tensors='pt'))
@@ -79,7 +83,8 @@ def main(args):
 
         dataset.save_to_disk('dataset/eli5_10')
 
-
+    if args.debug:
+        pdb.set_trace()
     print(len(dataset[train_name]))
 
     # prova con una singola frase

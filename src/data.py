@@ -10,3 +10,5 @@ def get_dataset(dataset_name: str):
         return load_dataset("web_questions")
     elif dataset_name == 'natural_questions':
         return load_dataset("natural_questions")
+    elif dataset_name == 'conceptnet':
+        return load_dataset("peandrew/conceptnet_en_nomalized")

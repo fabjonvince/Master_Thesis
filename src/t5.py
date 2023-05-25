@@ -1,4 +1,5 @@
 import copy
+import pdb
 from typing import Optional, Tuple, Union
 
 import torch
@@ -133,6 +134,7 @@ class CustomKilLayer(torch.nn.Module):
         # A shape [Nrelation X Nwords X Nwords]
 
         print('oreolm layer')
+        pdb.set_trace()
 
         # relation prediction
         prels = self.relation_pred(inputs_embeds[token_index], rel)

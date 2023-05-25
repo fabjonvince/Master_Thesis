@@ -6,93 +6,108 @@ import pandas as pd
 import requests
 import json
 from keybert import KeyBERT
+from wikidata.client import Client
 
 
 def text_to_graph(
         N, #numero di salti
-        text #domanda
+        text, #domanda
+        graph
         ):
 
     kw_model = KeyBERT()
     kw = kw_model.extract_keywords(text)
     txt = [kw[i][0].lower() for i in range(len(kw))]
     txt = np.unique(txt)
-
+    ids = [get_id(word) for word in txt]
+    txt_id = ['<id_word> ' + ids[i] + ' <word> ' + txt[i] + ' <desc> ' + extract_info_node(ids[i])[1] for i in range(len(txt)) if ids[i] is not None]
     triplets_list = []
-    entities_list = txt
+    entities_list = txt_id
 
     for i in range(N):
         # Get all entities for each text
-        entities = get_entities(txt, N=N)
 
-        triplets = convert_to_triplets(entities)
-        triplets = [(triplet[0].lower(), triplet[1].lower(), triplet[2].lower()) for triplet in triplets]
+        triplets = extract_triplets(txt_id)
+        #triplets = [(triplet[0], triplet[1], triplet[2]) for triplet in triplets]
         triplets = np.unique(triplets, axis=0)
         triplets_list.extend([triplet for triplet in triplets])
 
         entities = [triplet[2] for triplet in triplets]
         entities = [entity for entity in entities if entity not in entities_list]
-        txt = np.unique(entities)
-        entities_list = np.hstack((entities_list, txt))
+        txt_id = np.unique(entities)
+
+        entities_list = np.hstack((entities_list, txt_id))
 
     return triplets_list
 
-def get_entities(text, N, cont=0):
+def get_id(text):
 
-    entities = []
-    if cont == 0:
-        for word in text:
-            url = "https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json&language=en&type=item&search=" + word
-            response = requests.get(url)
-            data = json.loads(response.text)
-            if 'search' in data:
-                for item in data['search']:
-                    if item['label'] not in entities:
-                        new_item = re.sub(r'[\W+]', '', str(item['label']))
-                        if new_item != "":
-                            sub_entities = get_entities(item['label'], N-1, cont + 1)
-                            entities.append([word, [item['label'], sub_entities]])
-
+    url = "https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json&language=en&type=item&search=" + text
+    response = requests.get(url)
+    data = json.loads(response.text)
+    if data['search']:
+        id = data['search'][0]['id']
+        return id
     else:
+        return None
 
-        url = "https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json&language=en&type=item&search=" + text
+def extract_triplets(txt_ids):
+
+    triplets = []
+
+    for ktxt in txt_ids:
+
+        wid = ktxt.split('<id_word>')[1].split('<word>')[0].strip() #word id
+        url = "https://www.wikidata.org/w/api.php?action=wbgetclaims&format=json&entity=" + wid
         response = requests.get(url)
         data = json.loads(response.text)
+        for item in data['claims']:
+            if item.startswith("P"):
+                predicate = item
+                claims = data['claims'][item][0]
+                if "mainsnak" in claims:
+                    if "datavalue" in claims["mainsnak"]:
+                        if "value" in claims["mainsnak"]["datavalue"]:
+                            value = claims['mainsnak']['datavalue']['value']
+                            if type(value) is dict and 'id' in value:
 
-        if 'search' in data:
-            for item in data['search']:
-                if item['label'] not in entities:
-                    new_item = re.sub(r'[\W+]', '', str(item['label']))
-                    if new_item != "":
-                        entities.append(item['label'])
-
-        entities = np.unique(entities)
-
-    return entities
-
-
-def convert_to_triplets(nodes):
-    # index 0 = source, altri index = relazioni
-    triplets = []
-    for i in range(len(nodes)):
-        entity1 = nodes[i][0]
-        relation = nodes[i][1][0]
-
-        for j in range(len(nodes[i][1][1])):
-            triplets.append((entity1, relation, nodes[i][1][1][j]))
+                                objects = value['id']
+                                info_pred = extract_info_node(predicate)
+                                predicate = '<id_word> ' + predicate + ' <word> ' + info_pred[0] + ' <desc> ' + info_pred[1]
+                                info_obj = extract_info_node(objects)
+                                objects = '<id_word> ' + objects + ' <word> ' + info_obj[0] + ' <desc> ' + info_obj[1]
+                                triplets.append((ktxt, predicate, objects))
 
     return triplets
+
+
+def extract_info_node(node_id):
+
+    client = Client()
+    item = client.get(node_id)
+    description = str(item.description)
+    name = str(item.label)
+
+    return [name, description]
+
+### da modificare ###
+def print_info_triples(triples):
+
+    for s, r, p in triples:
+        try:
+            extract_info_node(s)
+            extract_info_node(r)
+            extract_info_node(p)
+            print('-------------------------------')
+        except:
+            print('Error with ' + str(s))
+
+
 
 
 def print_triplets(triplets):
     for triplet in triplets:
         print(triplet[0] + " -> " + triplet[1] + " -> " + triplet[2])
-
-
-def graph_to_nodes(triplets):
-    nodes = np.unique([item for rel in triplets for item in rel])
-
-    return nodes
 
 
 def graph_to_rel(triplets):
@@ -101,10 +116,11 @@ def graph_to_rel(triplets):
 
     for rel in triplets:
 
-        if rel[1] in relations.keys():
-            relations[rel[1]].append((rel[0], rel[2]))
+        relation = rel[1].split('<id_word>')[1].split('<word>')[0].strip()
+        if relation in relations.keys():
+            relations[relation].append((rel[0], rel[2]))
         else:
-            relations[rel[1]] = [(rel[0], rel[2])]
+            relations[relation] = [(rel[0], rel[2])]
 
     for node in nodes:
         #vedere se dà errore e fare assegnazione prima volta

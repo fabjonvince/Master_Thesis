@@ -9,10 +9,9 @@ from keybert import KeyBERT
 from wikidata.client import Client
 
 
-def text_to_graph(
+def text_to_graph_wikidata(
         N, #numero di salti
         text, #domanda
-        graph
         ):
 
     kw_model = KeyBERT()
@@ -104,6 +103,51 @@ def print_info_triples(triples):
 
 
 
+def add_special_tokens(
+        question, #domanda
+        ):
+
+    kw_model = KeyBERT()
+    kw = kw_model.extract_keywords(question)
+    txt = [kw[i][0].lower() for i in range(len(kw))]
+    txt = np.unique(txt)
+
+    new_question = question
+    for word in txt:
+        idx = re.search(r"\b({})\b".format(word), new_question, re.IGNORECASE).start()
+        new_question = new_question[:idx] + "<REL_TOKEN> " + new_question[idx:]
+
+    return new_question
+
+
+def text_to_graph_concept(
+        N, #numero di salti
+        text, #domanda
+        graph, #grafo
+        subj, #first arg
+        ):
+
+    text = text.split()
+    txt = [re.sub("[^a-z]", "", text[i + 1].lower()) for i in range(len(text)) if text[i] == "<REL_TOKEN>"]
+
+    triplets_list = []
+    entities_list = txt
+
+    for i in range(N):
+
+        triplets = graph.loc[graph[subj].isin(txt)][['arg1', 'rel', 'arg2']].to_numpy()
+        triplets = [(item[0], item[1], item[2]) for item in triplets]
+        triplets = np.unique(triplets, axis=0)
+        triplets_list.extend([triplet for triplet in triplets])
+
+        entities = [triplet[2] for triplet in triplets]
+        entities = [entity for entity in entities if entity not in entities_list]
+        txt = np.unique(entities)
+
+        entities_list = np.hstack((entities_list, txt))
+
+    return triplets_list
+
 
 def print_triplets(triplets):
     for triplet in triplets:
@@ -112,18 +156,17 @@ def print_triplets(triplets):
 
 def graph_to_rel(triplets):
     relations = {}
-    nodes = np.unique([item for rel in triplets for item in rel])
+    nodes = np.unique([item for rel in triplets for item in [rel[0], rel[2]]])
 
     for rel in triplets:
 
-        relation = rel[1].split('<id_word>')[1].split('<word>')[0].strip()
-        if relation in relations.keys():
-            relations[relation].append((rel[0], rel[2]))
+        if rel[1] in relations.keys():
+            relations[rel[1]].append((rel[0], rel[2]))
         else:
-            relations[relation] = [(rel[0], rel[2])]
+            relations[rel[1]] = [(rel[0], rel[2])]
 
     for node in nodes:
-        #vedere se dà errore e fare assegnazione prima volta
+
         if "self_rel" in relations.keys():
             relations["self_rel"].append((node, node))
         else:
@@ -132,7 +175,7 @@ def graph_to_rel(triplets):
     return relations
 
 
-def graph_to_edges(triplets):
+def graph_to_nodes(triplets):
 
     edges = {}
 

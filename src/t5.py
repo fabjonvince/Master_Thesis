@@ -1,7 +1,6 @@
 import copy
 import pdb
 from typing import Optional, Tuple, Union
-
 import torch
 import torch.nn.functional as F
 from torch.nn import CrossEntropyLoss
@@ -13,7 +12,7 @@ from transformers.models.t5.modeling_t5 import T5Block, T5LayerNorm, T5LayerSelf
     T5LayerCrossAttention, T5Stack
 from transformers.utils.model_parallel_utils import get_device_map, assert_device_map
 
-from src.tools import extract_all_relations_for_a_node, extract_values_from_tensor, find_triplets, AllReasoningPath
+from tools import extract_all_relations_for_a_node, extract_values_from_tensor, find_triplets, AllReasoningPath
 
 
 #from model import CustomKilLayer
@@ -155,22 +154,24 @@ class CustomGNNLayer(torch.nn.Module):
     def __init__(self,
                  n_rel,  # Numero di tutte le possibili relazioni
                  embs_size,
+                 model_size,
                  topk=2,
                  ):
         super().__init__()
         self.embs_size = embs_size
+        self.model_size = model_size
         self.n_rel = n_rel
         self.topk = topk
         # the classification head is composed by a linear layer and a softmax function
-        self.classification_head = torch.nn.Sequential(torch.nn.Linear(self.embs_size, self.n_rel),
+        self.classification_head = torch.nn.Sequential(torch.nn.Linear(self.model_size, self.n_rel),
                                                        torch.nn.Softmax(dim=1))
 
         # Now I need layer to perform a attention reprojection
-        self.query_reprj = torch.nn.Sequential(torch.nn.Linear(self.embs_size, self.embs_size), torch.nn.Tanh())
-        self.nodes_reprj = torch.nn.Sequential(torch.nn.Linear(self.embs_size, self.embs_size), torch.nn.Tanh())
+        self.query_reprj = torch.nn.Sequential(torch.nn.Linear(self.model_size, self.model_size), torch.nn.Tanh())
+        self.nodes_reprj = torch.nn.Sequential(torch.nn.Linear(self.embs_size, self.model_size), torch.nn.Tanh())
 
         # Now the reprojection layer to inject graph knowledge into the GNN-TOK
-        self.gnn_reprj = torch.nn.Sequential(torch.nn.Linear(self.embs_size, self.embs_size), torch.nn.Tanh())
+        self.gnn_reprj = torch.nn.Sequential(torch.nn.Linear(self.embs_size, self.model_size), torch.nn.Tanh())
 
     def calculate_scores(self, query, k_nodes, probabilities):
         """
@@ -232,7 +233,7 @@ class CustomGNNLayer(torch.nn.Module):
                 current_reasoning_path: AllReasoningPath = None,
                 rels_ids=None,  # ids of the relations in the memory
                 ):
-
+        pdb.set_trace()
         # I generate the probability over all the relations
         rel_prob = self.classification_head(hidden_states[rel_mask.bool()])
         # rel_prob shape (batch_size=1, n_REL_TOK, n_rels)
@@ -316,11 +317,12 @@ class CustomGNNLayer(torch.nn.Module):
                         keep = False
 
                 # Add the most probable node to the reasoning path
-                current_reasoning_path.add_new_step(cur_node, k, next_node[0], next_node[1], value[index])
+                current_reasoning_path.add_new_step(root_word, k, next_node[0], next_node[1], value[index])
                 all_scores.append(mean_emb)
             all_scores = torch.stack(all_scores).mean(dim=0)
             output.append(all_scores)
         output = torch.stack(output)
+        output = self.gnn_reprj(output)
         # Now I update the hidden states
         hidden_states[gnn_mask.bool()] = hidden_states[gnn_mask.bool()] + output
 
@@ -337,7 +339,7 @@ class T5GNNBlock(nn.Module):
 
         self.layer.append(T5LayerFF(config))
         self.layer.append(CustomGNNLayer(
-            n_rel=config.n_rel, embs_size=config.d_model, topk=config.gnn_topk
+            n_rel=config.n_rel, embs_size=config.gnn_embs_size, model_size=config.d_model, topk=config.gnn_topk
         ))
 
     def forward(
@@ -427,15 +429,14 @@ class T5GNNBlock(nn.Module):
             attention_outputs = attention_outputs + cross_attention_outputs[2:]
 
         # Apply Feed Forward layer
-        hidden_states = self.layer[2](hidden_states)
+        hidden_states = self.layer[-2](hidden_states)
 
         # clamp inf values to enable fp16 training
         if hidden_states.dtype == torch.float16 and torch.isinf(hidden_states).any():
             clamp_value = torch.finfo(hidden_states.dtype).max - 1000
             hidden_states = torch.clamp(hidden_states, min=-clamp_value, max=clamp_value)
-
         # Apply GNN layer
-        hidden_states, current_reasoning_path = self.layer[3](
+        hidden_states, current_reasoning_path = self.layer[-1](
             hidden_states,  # embeddings of all the tokens in the sentence
             gnn_mask,  # index of the gnn tokens
             rel_mask,  # index of the rel tokens
@@ -461,6 +462,7 @@ class T5GNNStack(T5PreTrainedModel):
 
         self.embed_tokens = embed_tokens
         self.is_decoder = config.is_decoder
+        self.current_reasoning_path = None
 
         #self.block = nn.ModuleList(
         #    [T5Block(config, has_relative_attention_bias=bool(i == 0)) for i in range(config.num_layers)]
@@ -543,6 +545,8 @@ class T5GNNStack(T5PreTrainedModel):
         current_reasoning_path: AllReasoningPath = None,
         rels_ids=None,  # ids of the relations in the memory
     ):
+        if self.current_reasoning_path is None:
+            self.current_reasoning_path = current_reasoning_path
         # Model parallel
         if self.model_parallel:
             torch.cuda.set_device(self.first_device)
@@ -648,47 +652,83 @@ class T5GNNStack(T5PreTrainedModel):
                     cross_attn_layer_head_mask = cross_attn_layer_head_mask.to(hidden_states.device)
             if output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
-
             if self.gradient_checkpointing and self.training:
 
                 def create_custom_forward(module):
-                    def custom_forward(*inputs):
-                        return tuple(module(*inputs, use_cache, output_attentions))
+                    def custom_forward(*inputs, **kwargs):
+                        return tuple(module(*inputs, use_cache, output_attentions, **kwargs))
 
                     return custom_forward
 
-                layer_outputs = checkpoint(
-                    create_custom_forward(layer_module),
-                    hidden_states,
-                    extended_attention_mask,
-                    position_bias,
-                    encoder_hidden_states,
-                    encoder_extended_attention_mask,
-                    encoder_decoder_position_bias,
-                    layer_head_mask,
-                    cross_attn_layer_head_mask,
-                    None,  # past_key_value is always None with gradient checkpointing
-                )
+                if isinstance(layer_module, T5Block):
+                    layer_outputs = checkpoint(
+                        create_custom_forward(layer_module),
+                        hidden_states,
+                        extended_attention_mask,
+                        position_bias,
+                        encoder_hidden_states,
+                        encoder_extended_attention_mask,
+                        encoder_decoder_position_bias,
+                        layer_head_mask,
+                        cross_attn_layer_head_mask,
+                        None,  # past_key_value is always None with gradient checkpointing
+                    )
+                else:
+                    layer_outputs = checkpoint(
+                        create_custom_forward(layer_module),
+                        hidden_states,
+                        extended_attention_mask,
+                        position_bias,
+                        encoder_hidden_states,
+                        encoder_extended_attention_mask,
+                        encoder_decoder_position_bias,
+                        layer_head_mask,
+                        cross_attn_layer_head_mask,
+                        None,  # past_key_value is always None with gradient checkpointing
+                        gnn_mask=gnn_mask,  # index of the gnn tokens
+                        rel_mask=rel_mask,  # index of the rel tokens
+                        gnn_triplets=gnn_triplets,  # list of triplets
+                        memory_nodes=memory_nodes,  # node memory
+                        current_reasoning_path=self.current_reasoning_path,  # current reasoning path
+                        rels_ids=rels_ids,  # ids of the relations in the memory
+                    )
+
             else:
-                layer_outputs = layer_module(
-                    hidden_states,
-                    attention_mask=extended_attention_mask,
-                    position_bias=position_bias,
-                    encoder_hidden_states=encoder_hidden_states,
-                    encoder_attention_mask=encoder_extended_attention_mask,
-                    encoder_decoder_position_bias=encoder_decoder_position_bias,
-                    layer_head_mask=layer_head_mask,
-                    cross_attn_layer_head_mask=cross_attn_layer_head_mask,
-                    past_key_value=past_key_value,
-                    use_cache=use_cache,
-                    output_attentions=output_attentions,
-                    gnn_mask=gnn_mask,  # index of the gnn tokens
-                    rel_mask=rel_mask,  # index of the rel tokens
-                    gnn_triplets=gnn_triplets,  # list of triplets
-                    memory_nodes=memory_nodes,  # node memory
-                    current_reasoning_path=current_reasoning_path,  # current reasoning path
-                    rels_ids = rels_ids,  # ids of the relations in the memory
-                )
+                if isinstance(layer_module, T5GNNBlock):
+                    layer_outputs = layer_module(
+                        hidden_states,
+                        attention_mask=extended_attention_mask,
+                        position_bias=position_bias,
+                        encoder_hidden_states=encoder_hidden_states,
+                        encoder_attention_mask=encoder_extended_attention_mask,
+                        encoder_decoder_position_bias=encoder_decoder_position_bias,
+                        layer_head_mask=layer_head_mask,
+                        cross_attn_layer_head_mask=cross_attn_layer_head_mask,
+                        past_key_value=past_key_value,
+                        use_cache=use_cache,
+                        output_attentions=output_attentions,
+                        gnn_mask=gnn_mask,  # index of the gnn tokens
+                        rel_mask=rel_mask,  # index of the rel tokens
+                        gnn_triplets=gnn_triplets,  # list of triplets
+                        memory_nodes=memory_nodes,  # node memory
+                        current_reasoning_path=self.current_reasoning_path,  # current reasoning path
+                        rels_ids = rels_ids,  # ids of the relations in the memory
+                    )
+                else:
+                    layer_outputs = layer_module(
+                        hidden_states,
+                        attention_mask=extended_attention_mask,
+                        position_bias=position_bias,
+                        encoder_hidden_states=encoder_hidden_states,
+                        encoder_attention_mask=encoder_extended_attention_mask,
+                        encoder_decoder_position_bias=encoder_decoder_position_bias,
+                        layer_head_mask=layer_head_mask,
+                        cross_attn_layer_head_mask=cross_attn_layer_head_mask,
+                        past_key_value=past_key_value,
+                        use_cache=use_cache,
+                        output_attentions=output_attentions,
+                    )
+
 
             # layer_outputs is a tuple with:
             # hidden-states, key-value-states, (self-attention position bias), (self-attention weights), (cross-attention position bias), (cross-attention weights)
@@ -767,8 +807,9 @@ class T5GNNForConditionalGeneration(T5PreTrainedModel):
         encoder_config.use_cache = False
         encoder_config.is_encoder_decoder = False
         encoder_config.layer_with_gnn = args.layer_with_gnn
-        encoder_config.n_rel = args.nrel
-        config.gnn_topk = args.gnn_topk
+        encoder_config.n_rel = args.n_rel
+        encoder_config.gnn_topk = args.gnn_topk
+        encoder_config.gnn_embs_size = args.gnn_embs_size
         self.encoder = T5GNNStack(encoder_config, self.shared)
 
         decoder_config = copy.deepcopy(config)
@@ -880,7 +921,7 @@ class T5GNNForConditionalGeneration(T5PreTrainedModel):
         >>> print(tokenizer.decode(outputs[0], skip_special_tokens=True))
         >>> # studies have shown that owning a dog is good for you.
         ```"""
-
+        pdb.set_trace()
         use_cache = use_cache if use_cache is not None else self.config.use_cache
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
@@ -914,7 +955,7 @@ class T5GNNForConditionalGeneration(T5PreTrainedModel):
                 attentions=encoder_outputs[2] if len(encoder_outputs) > 2 else None,
             )
 
-
+        pdb.set_trace()
         hidden_states = encoder_outputs[0]
 
         if self.model_parallel:

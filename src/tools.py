@@ -1,5 +1,5 @@
 import torch
-import numpy as no
+import numpy as np
 
 class SingleReasoningPath:
     def __init__(self, root_node, topk):
@@ -20,6 +20,9 @@ class SingleReasoningPath:
 
     def get_root_node(self):
         return self.root_node
+
+    def get_reasoning_path(self):
+        return self.kpath
 
 
 
@@ -42,6 +45,9 @@ class AllReasoningPath:
 
     def add_new_step(self, root_node, k, rel, node, prob):
         self.all_path[root_node].add_new_step(rel, node, prob, k)
+
+    def get_all_reasoning_path(self):
+        return {k: v.get_reasoning_path() for k,v in self.all_path.items()}
 
 
 # Define a function named find_triplets. It will be used inside the Custom layer

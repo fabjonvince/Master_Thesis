@@ -11,7 +11,7 @@ from preprocess import graph_to_rel, rel_to_adj, print_info_triples, text_to_gra
     text_to_graph_concept, add_special_tokens, graph_to_nodes
 from data import get_dataset
 from model import GNNQA, T5DataModule
-from t5 import T5KILForConditionalGeneration
+from t5 import T5KILForConditionalGeneration, T5GNNForConditionalGeneration
 from pytorch_lightning import Trainer
 from sentence_transformers import SentenceTransformer
 
@@ -21,8 +21,9 @@ argparser.add_argument('--graph', type=str, default='conceptnet', help='Graph to
 argparser.add_argument('--train_samples', type=int, default=10, help='Number of train samples')
 argparser.add_argument('--val_samples', type=int, default=10, help='Number of validation samples')
 argparser.add_argument('--test_samples', type=int, default=10, help='Number of test samples')
-argparser.add_argument('--layer_with_kil', type=int, default=[1, 2], help='Layers with KIL')
+argparser.add_argument('--layer_with_gnn', type=int, default=[1, 2], help='Layers with KIL')
 argparser.add_argument('--debug', action='store_true', help='Debug mode')
+argparser.add_argument('--gnn_topk', type=int, default=2, help='Number of topk nodes to consider for each root node')
 name_mapping = {
 "eli5": ("train_eli5", "validation_eli5", "test_eli5", "title", "answers"),
 "conceptnet": ("rel", "arg1", "arg2"),
@@ -145,7 +146,7 @@ def main(args):
     setattr(args, 'nnodes', nnodes)
 
     #model creation
-    model = T5KILForConditionalGeneration.from_pretrained('t5-base', args)
+    model = T5GNNForConditionalGeneration.from_pretrained('t5-base', args)
     transformer_rel = SentenceTransformer('all-mpnet-base-v2')
     transformer_nodes = SentenceTransformer('all-mpnet-base-v2')
     gnnqa = GNNQA(model=model, rel_model=transformer_rel, nodes_model=transformer_nodes)

@@ -15,10 +15,12 @@ from sentence_transformers import SentenceTransformer
 
 argparser = argparse.ArgumentParser()
 argparser.add_argument('--dataset', type=str, default='eli5', help='Dataset to use')
+argparser.add_argument('--load_dataset', default=None, help='Load dataset from disk')
 argparser.add_argument('--train_samples', type=int, default=10, help='Number of train samples')
 argparser.add_argument('--val_samples', type=int, default=10, help='Number of validation samples')
 argparser.add_argument('--test_samples', type=int, default=10, help='Number of test samples')
-argparser.add_argument('--layer_with_kil', type=int, default=[1, 2], help='Layers with KIL')
+argparser.add_argument('--layer_with_kil', type=int, nargs='+', default=[0, 1], help='Layers with KIL')
+argparser.add_argument('--run_name', type=str, help='Run name', required=True)
 argparser.add_argument('--debug', action='store_true', help='Debug mode')
 name_mapping = {
 "eli5": ("train_eli5", "validation_eli5", "test_eli5", "title", "answers")
@@ -41,9 +43,9 @@ def main(args):
     #sistemare test set (non ridotto) e usato il map del validation invece che del test
 
     #load dataset
-    if exists('dataset/eli5_10'):
+    if args.load_dataset:
 
-        dataset = load_from_disk('dataset/eli5_10')
+        dataset = load_from_disk(args.load_dataset)
 
     else:
         if args.debug:
@@ -61,7 +63,7 @@ def main(args):
         dataset[train_name] = dataset[train_name].map(
             lambda example: {'answer_tok': tokenizer(example[question_name], padding='max_length', truncation=True, max_length=512, return_tensors='pt')})
 
-        dataset[train_name] = dataset[train_name].map(lambda example: {'graph': text_to_graph(2, example[question_name])})
+        dataset[train_name] = dataset[train_name].map(lambda example: {'graph': text_to_graph(2, example[question_name], debug=args.debug)})
 
         dataset[eval_name] = dataset[eval_name].map(
             lambda example: tokenizer(example[answers_name]['text'], padding='max_length', truncation=True, max_length=512, return_tensors='pt'))
@@ -81,7 +83,8 @@ def main(args):
         dataset[test_name] = dataset[test_name].map(
             lambda example: {'graph': text_to_graph(2, example[question_name])})
 
-        dataset.save_to_disk('dataset/eli5_10')
+        dataset.save_to_disk(f'dataset/eli5_{args.train_samples}_{args.val_samples}_{args.test_samples}')
+        print(f"Dataset saved to {f'dataset/eli5_{args.train_samples}_{args.val_samples}_{args.test_samples}'}")
 
     if args.debug:
         pdb.set_trace()

@@ -10,8 +10,12 @@ from keybert import KeyBERT
 
 def text_to_graph(
         N, #numero di salti
-        text #domanda
+        text, #domanda,
+        debug=False
         ):
+
+    if debug:
+        pdb.set_trace()
 
     kw_model = KeyBERT()
     kw = kw_model.extract_keywords(text)
@@ -37,9 +41,11 @@ def text_to_graph(
 
     return triplets_list
 
-def get_entities(text, N, cont=0):
+def get_entities(text, N, cont=0, debug=False):
 
     entities = []
+    if debug:
+        pdb.set_trace()
     if cont == 0:
         for word in text:
             url = "https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json&language=en&type=item&search=" + word

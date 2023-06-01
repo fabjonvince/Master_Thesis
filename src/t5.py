@@ -2,14 +2,17 @@ import copy
 from typing import Optional, Tuple, Union
 
 import torch
+import torch.nn.functional as F
 from torch.nn import CrossEntropyLoss
 from torch.utils.checkpoint import checkpoint
 from transformers import T5PreTrainedModel, T5Config
 from torch import nn, Tensor, tensor
 from transformers.modeling_outputs import Seq2SeqLMOutput, BaseModelOutput, BaseModelOutputWithPastAndCrossAttentions
 from transformers.models.t5.modeling_t5 import T5Block, T5LayerNorm, T5LayerSelfAttention, T5LayerFF, \
-    T5LayerCrossAttention
+    T5LayerCrossAttention, T5Stack
 from transformers.utils.model_parallel_utils import get_device_map, assert_device_map
+
+from src.tools import extract_all_relations_for_a_node, extract_values_from_tensor, find_triplets, AllReasoningPath
 
 
 #from model import CustomKilLayer
@@ -145,7 +148,312 @@ class CustomKilLayer(torch.nn.Module):
         return new_embds
 
 
-class T5KILStack(T5PreTrainedModel):
+class CustomGNNLayer(torch.nn.Module):
+
+    def __init__(self,
+                 n_rel,  # Numero di tutte le possibili relazioni
+                 n_nodes,
+                 embs_size,
+                 topk=2,
+                 ):
+        super().__init__()
+        self.embs_size = embs_size
+        self.n_rel = n_rel
+        self.topk = topk
+        # the classification head is composed by a linear layer and a softmax function
+        self.classification_head = torch.nn.Sequential(torch.nn.Linear(self.embs_size, self.n_rel),
+                                                       torch.nn.Softmax(dim=1))
+
+        # Now I need layer to perform a attention reprojection
+        self.query_reprj = torch.nn.Sequential(torch.nn.Linear(self.embs_size, self.embs_size), torch.nn.Tanh())
+        self.nodes_reprj = torch.nn.Sequential(torch.nn.Linear(self.embs_size, self.embs_size), torch.nn.Tanh())
+
+        # Now the reprojection layer to inject graph knowledge into the GNN-TOK
+        self.gnn_reprj = torch.nn.Sequential(torch.nn.Linear(self.embs_size, self.embs_size), torch.nn.Tanh())
+
+    def calculate_scores(self, query, k_nodes, probabilities):
+        """
+        Calculates the final scores for each embedding in each group based on the given query, groups, and probabilities.
+
+        Args:
+            query (torch.Tensor): The embedding of the query text of shape (1, Q).
+            k_nodes (list of torch.Tensor): A list of N groups of node embeddings, where each group is of shape (M, Q).
+            probabilities (torch.Tensor): A tensor of size (1, N) containing the probabilities assigned to each group.
+
+        Returns:
+            scores (list of lists): A list of lists containing the final scores for each embedding in each group.
+        """
+
+        # Pad the groups to make them equally sized
+        max_size = max(len(group) for group in k_nodes)
+        groups_padded = [F.pad(group, (0, 0, 0, max_size - len(group))) for group in k_nodes]
+
+        # Stack the padded groups
+        groups_stacked_tmp = torch.stack(groups_padded)
+        mask = (groups_stacked_tmp != 0).int()[:, :, 0]
+
+        # reprojection of nodes
+        groups_stacked = self.nodes_reprj(groups_stacked_tmp)
+
+        # reprojection of query
+        query = self.query_reprj(query)
+
+        # Expand dimensions to match batch sizes for broadcasting
+        query_expanded = query.unsqueeze(0)
+        probabilities_expanded = probabilities.unsqueeze(2)
+
+        # Calculate the dot product between the query and each embedding in the groups
+        dot_products = torch.matmul(groups_stacked, query_expanded.permute(0, 2, 1))
+
+        # Apply softmax normalization to the dot products
+        attention_weights = F.softmax(dot_products, dim=1)
+        # print(attention_weights.shape)
+        # print(probabilities_expanded.shape)
+
+        # Weight the attention weights by the probability assigned to the group
+        logits = attention_weights * probabilities_expanded.view(attention_weights.size(0), 1, 1) / 0.1
+        # print(logits.shape)
+        weighted_attention = F.softmax(logits.view(-1, ), dim=0)
+        # print(weighted_attention)
+        weighted_attention = weighted_attention.view(*logits.shape)
+
+        weighted_attention[mask == 0] = 0
+        print("wa", weighted_attention.shape)
+
+        return weighted_attention, groups_stacked_tmp
+
+    def forward(self,
+                hidden_states,
+                attention_mask=None,
+                position_bias=None,
+                encoder_hidden_states=None,
+                encoder_attention_mask=None,
+                encoder_decoder_position_bias=None,
+                layer_head_mask=None,
+                cross_attn_layer_head_mask=None,
+                past_key_value=None,
+                use_cache=None,
+                output_attentions=None,
+                gnn_mask=None,  # index of the gnn tokens
+                rel_mask=None,  # index of the rel tokens
+                gnn_triplets=None,  # list of triplets
+                memory_rels=None,  # rels memory
+                memory_nodes=None,  # node memory
+                selected_words=None,  # the words used to create the graph from the sentence
+                current_reasoning_path: AllReasoningPath = None,
+                rels_ids=None,  # ids of the relations in the memory
+                ):
+
+        # I generate the probability over all the relations
+        rel_prob = self.classification_head(hidden_states[rel_mask.bool()])
+        # rel_prob shape (batch_size=1, n_REL_TOK, n_rels)
+
+        current_nodes = current_reasoning_path.get_current_nodes()
+        # now current nodes is a dict where k are the root nodes and v are a list of topk elements representing the current node
+
+        queries = hidden_states[gnn_mask.bool()]
+        output = list()
+        for query, probs, root_word in zip(queries, rel_prob, current_nodes.keys()):
+            # I select the last node in the reasoning path
+            nodes = [n for n, _ in current_nodes[root_word]]
+
+            # I extract their relations creating a list
+            noderels = [(k, extract_all_relations_for_a_node(k, gnn_triplets)) for k in nodes]
+
+            # I turn relations into ids
+            noderelsids = [[rels_ids[r] for r in v] for k, v in noderels]
+
+            # I turn relation into probability
+            pnoderels = extract_values_from_tensor(probs, noderelsids)
+
+            # Now I create the groups. A group is a set of triplets that has the same start, and rel.
+            # group_nodes contains only the end nodes in a structure equal to the pnoderels.
+            # in this way for each prob in pnoderels corresponds a node in groups_nodes
+            groups_nodes = list()
+            selected_nodes = list()
+
+            for (k, rels), probs, ids in zip(noderels, pnoderels, noderelsids):
+                groups_nodes.append([[n for _, _, n in find_triplets(gnn_triplets, start=k, rel=rel)] for rel in rels])
+
+            all_scores = list()
+
+            # now it computes the weighted contribution of all the ends nodes.
+            # They are weighted by the relation weights and the score computed with an attention mechanism
+            for nods, probs, rels, cur_node, k in zip(groups_nodes, pnoderels, noderels, nodes, range(self.topk)):
+                # nods contains all the end nodes that have cur_node as start node
+                node_embs = list()
+                for ns in nods:
+                    # turn them into embedding using the memory matrix
+                    node_embs.append(torch.stack([memory_nodes[n] for n in ns]))
+                # compute the scores associaed to each embedding
+                scores, embs = self.calculate_scores(query.view(1, -1), k_nodes=node_embs,
+                                                     probabilities=probs.view(1, -1))
+
+                scores = scores.view(scores.size(0) * scores.size(1), -1)
+                embs = embs.view(scores.size(0) * scores.size(1), -1)
+                print('scores embs', scores.shape, embs.shape)
+                # weight embs for the scores
+                weighted_embs = embs * scores
+                print('weighted_embs', weighted_embs.shape)
+                # Compute the mean of the weighted embeddings
+                mean_emb = torch.mean(weighted_embs, dim=0)
+                print('mean_emb', mean_emb.shape)
+
+                # Now I have to add the topk end nodes to the reasoning path
+                # first I create a list containing tuple (rel, nodes) which are all the possibile end nodes from the current node
+                node_rel_list = [(r, n) for r, ns in zip(rels[1], nods) for n in ns]
+
+                # now update the reasoning path. The same current node can lead to the same edge nodes.
+                # to avoid that in case the end node is already selected we use the next most probable end node.
+                keep = True
+                tmp_scores = scores[scores != 0].view(1, -1)
+                value, indices = torch.sort(tmp_scores, descending=True)
+                value = value.view(-1, ).tolist()
+                indices = indices.view(-1, ).tolist()
+                index = 0
+
+                print(indices)
+                print(value)
+
+                while keep:
+                    # then I extract the index and the end node with the highest probability
+                    next_node = node_rel_list[indices[index]]
+                    if next_node in selected_nodes and index < len(node_rel_list) - 1:
+                        # next_node already selected
+                        index += 1
+                    else:
+                        selected_nodes.append(next_node)
+                        keep = False
+
+                # Add the most probable node to the reasoning path
+                current_reasoning_path.add_new_step(cur_node, k, next_node[0], next_node[1], value[index])
+                all_scores.append(mean_emb)
+                print("mean", mean_emb.shape)
+            all_scores = torch.stack(all_scores).mean(dim=0)
+            print("all scores", all_scores.shape)
+            output.append(all_scores)
+        output = torch.stack(output)
+        # Now I update the hidden states
+        hidden_states[gnn_mask.bool()] = hidden_states[gnn_mask.bool()] + output
+
+        return current_reasoning_path
+
+class T5GNNBlock(nn.Module):
+    def __init__(self, config, has_relative_attention_bias=False):
+        super().__init__()
+        self.is_decoder = config.is_decoder
+        self.layer = nn.ModuleList()
+        self.layer.append(T5LayerSelfAttention(config, has_relative_attention_bias=has_relative_attention_bias))
+        if self.is_decoder:
+            self.layer.append(T5LayerCrossAttention(config))
+
+        self.layer.append(T5LayerFF(config))
+
+    def forward(
+        self,
+        hidden_states,
+        attention_mask=None,
+        position_bias=None,
+        encoder_hidden_states=None,
+        encoder_attention_mask=None,
+        encoder_decoder_position_bias=None,
+        layer_head_mask=None,
+        cross_attn_layer_head_mask=None,
+        past_key_value=None,
+        use_cache=False,
+        output_attentions=False,
+        return_dict=True,
+        graph=None,
+        edges=None,
+        rel=None,
+        enc_rel=None,
+        adj=None,
+    ):
+        if past_key_value is not None:
+            expected_num_past_key_values = 2 if encoder_hidden_states is None else 4
+
+            if len(past_key_value) != expected_num_past_key_values:
+                raise ValueError(
+                    f"There should be {expected_num_past_key_values} past states. "
+                    f"{'2 (past / key) for cross attention. ' if expected_num_past_key_values == 4 else ''}"
+                    f"Got {len(past_key_value)} past key / value states"
+                )
+
+            self_attn_past_key_value = past_key_value[:2]
+            cross_attn_past_key_value = past_key_value[2:]
+        else:
+            self_attn_past_key_value, cross_attn_past_key_value = None, None
+
+        self_attention_outputs = self.layer[0](
+            hidden_states,
+            attention_mask=attention_mask,
+            position_bias=position_bias,
+            layer_head_mask=layer_head_mask,
+            past_key_value=self_attn_past_key_value,
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+        )
+        hidden_states, present_key_value_state = self_attention_outputs[:2]
+        attention_outputs = self_attention_outputs[2:]  # Keep self-attention outputs and relative position weights
+
+        # clamp inf values to enable fp16 training
+        if hidden_states.dtype == torch.float16 and torch.isinf(hidden_states).any():
+            clamp_value = torch.finfo(hidden_states.dtype).max - 1000
+            hidden_states = torch.clamp(hidden_states, min=-clamp_value, max=clamp_value)
+
+        do_cross_attention = self.is_decoder and encoder_hidden_states is not None
+        if do_cross_attention:
+            # the actual query length is unknown for cross attention
+            # if using past key value states. Need to inject it here
+            if present_key_value_state is not None:
+                query_length = present_key_value_state[0].shape[2]
+            else:
+                query_length = None
+
+            cross_attention_outputs = self.layer[1](
+                hidden_states,
+                key_value_states=encoder_hidden_states,
+                attention_mask=encoder_attention_mask,
+                position_bias=encoder_decoder_position_bias,
+                layer_head_mask=cross_attn_layer_head_mask,
+                past_key_value=cross_attn_past_key_value,
+                query_length=query_length,
+                use_cache=use_cache,
+                output_attentions=output_attentions,
+            )
+            hidden_states = cross_attention_outputs[0]
+
+            # clamp inf values to enable fp16 training
+            if hidden_states.dtype == torch.float16 and torch.isinf(hidden_states).any():
+                clamp_value = torch.finfo(hidden_states.dtype).max - 1000
+                hidden_states = torch.clamp(hidden_states, min=-clamp_value, max=clamp_value)
+
+            # Combine self attn and cross attn key value states
+            if present_key_value_state is not None:
+                present_key_value_state = present_key_value_state + cross_attention_outputs[1]
+
+            # Keep cross-attention outputs and relative position weights
+            attention_outputs = attention_outputs + cross_attention_outputs[2:]
+
+        # Apply Feed Forward layer
+        hidden_states = self.layer[-1](hidden_states)
+
+        # clamp inf values to enable fp16 training
+        if hidden_states.dtype == torch.float16 and torch.isinf(hidden_states).any():
+            clamp_value = torch.finfo(hidden_states.dtype).max - 1000
+            hidden_states = torch.clamp(hidden_states, min=-clamp_value, max=clamp_value)
+
+        outputs = (hidden_states,)
+
+        if use_cache:
+            outputs = outputs + (present_key_value_state,) + attention_outputs
+        else:
+            outputs = outputs + attention_outputs
+
+        return outputs  # hidden-states, present_key_value_states, (self-attention position bias), (self-attention weights), (cross-attention position bias), (cross-attention weights)
+
+
+class T5GNNStack(T5PreTrainedModel):
     def __init__(self, config, embed_tokens=None):
         super().__init__(config)
         self.embed_tokens = embed_tokens
@@ -153,7 +461,7 @@ class T5KILStack(T5PreTrainedModel):
 
         layers = []
         for i in range(config.num_layers):
-            layer = T5KILBlock(config, has_relative_attention_bias=bool(i == 0))
+            layer = T5GNNBlock(config, has_relative_attention_bias=bool(i == 0))
             layers.append(layer)
             if self.is_decoder == False and i in config.layer_with_kil:
                 layer = CustomKilLayer(n_rel=config.nrel, n_nodes=config.nnodes)
@@ -457,13 +765,13 @@ class T5KILForConditionalGeneration(T5PreTrainedModel):
         encoder_config.layer_with_kil = args.layer_with_kil
         encoder_config.nrel = args.nrel
         encoder_config.nnodes = args.nnodes
-        self.encoder = T5KILStack(encoder_config, self.shared)
+        self.encoder = T5GNNStack(encoder_config, self.shared)
 
         decoder_config = copy.deepcopy(config)
         decoder_config.is_decoder = True
         decoder_config.is_encoder_decoder = False
         decoder_config.num_layers = config.num_decoder_layers
-        self.decoder = T5KILStack(decoder_config, self.shared)
+        self.decoder = T5Stack(decoder_config, self.shared)
 
         self.lm_head = nn.Linear(config.d_model, config.vocab_size, bias=False)
 
@@ -729,117 +1037,4 @@ class T5KILForConditionalGeneration(T5PreTrainedModel):
 
 
 
-class T5KILBlock(nn.Module):
-    def __init__(self, config, has_relative_attention_bias=False):
-        super().__init__()
-        self.is_decoder = config.is_decoder
-        self.layer = nn.ModuleList()
-        self.layer.append(T5LayerSelfAttention(config, has_relative_attention_bias=has_relative_attention_bias))
-        if self.is_decoder:
-            self.layer.append(T5LayerCrossAttention(config))
-
-        self.layer.append(T5LayerFF(config))
-
-    def forward(
-        self,
-        hidden_states,
-        attention_mask=None,
-        position_bias=None,
-        encoder_hidden_states=None,
-        encoder_attention_mask=None,
-        encoder_decoder_position_bias=None,
-        layer_head_mask=None,
-        cross_attn_layer_head_mask=None,
-        past_key_value=None,
-        use_cache=False,
-        output_attentions=False,
-        return_dict=True,
-        graph=None,
-        edges=None,
-        rel=None,
-        enc_rel=None,
-        adj=None,
-    ):
-        if past_key_value is not None:
-            expected_num_past_key_values = 2 if encoder_hidden_states is None else 4
-
-            if len(past_key_value) != expected_num_past_key_values:
-                raise ValueError(
-                    f"There should be {expected_num_past_key_values} past states. "
-                    f"{'2 (past / key) for cross attention. ' if expected_num_past_key_values == 4 else ''}"
-                    f"Got {len(past_key_value)} past key / value states"
-                )
-
-            self_attn_past_key_value = past_key_value[:2]
-            cross_attn_past_key_value = past_key_value[2:]
-        else:
-            self_attn_past_key_value, cross_attn_past_key_value = None, None
-
-        self_attention_outputs = self.layer[0](
-            hidden_states,
-            attention_mask=attention_mask,
-            position_bias=position_bias,
-            layer_head_mask=layer_head_mask,
-            past_key_value=self_attn_past_key_value,
-            use_cache=use_cache,
-            output_attentions=output_attentions,
-        )
-        hidden_states, present_key_value_state = self_attention_outputs[:2]
-        attention_outputs = self_attention_outputs[2:]  # Keep self-attention outputs and relative position weights
-
-        # clamp inf values to enable fp16 training
-        if hidden_states.dtype == torch.float16 and torch.isinf(hidden_states).any():
-            clamp_value = torch.finfo(hidden_states.dtype).max - 1000
-            hidden_states = torch.clamp(hidden_states, min=-clamp_value, max=clamp_value)
-
-        do_cross_attention = self.is_decoder and encoder_hidden_states is not None
-        if do_cross_attention:
-            # the actual query length is unknown for cross attention
-            # if using past key value states. Need to inject it here
-            if present_key_value_state is not None:
-                query_length = present_key_value_state[0].shape[2]
-            else:
-                query_length = None
-
-            cross_attention_outputs = self.layer[1](
-                hidden_states,
-                key_value_states=encoder_hidden_states,
-                attention_mask=encoder_attention_mask,
-                position_bias=encoder_decoder_position_bias,
-                layer_head_mask=cross_attn_layer_head_mask,
-                past_key_value=cross_attn_past_key_value,
-                query_length=query_length,
-                use_cache=use_cache,
-                output_attentions=output_attentions,
-            )
-            hidden_states = cross_attention_outputs[0]
-
-            # clamp inf values to enable fp16 training
-            if hidden_states.dtype == torch.float16 and torch.isinf(hidden_states).any():
-                clamp_value = torch.finfo(hidden_states.dtype).max - 1000
-                hidden_states = torch.clamp(hidden_states, min=-clamp_value, max=clamp_value)
-
-            # Combine self attn and cross attn key value states
-            if present_key_value_state is not None:
-                present_key_value_state = present_key_value_state + cross_attention_outputs[1]
-
-            # Keep cross-attention outputs and relative position weights
-            attention_outputs = attention_outputs + cross_attention_outputs[2:]
-
-        # Apply Feed Forward layer
-        hidden_states = self.layer[-1](hidden_states)
-
-        # clamp inf values to enable fp16 training
-        if hidden_states.dtype == torch.float16 and torch.isinf(hidden_states).any():
-            clamp_value = torch.finfo(hidden_states.dtype).max - 1000
-            hidden_states = torch.clamp(hidden_states, min=-clamp_value, max=clamp_value)
-
-        outputs = (hidden_states,)
-
-        if use_cache:
-            outputs = outputs + (present_key_value_state,) + attention_outputs
-        else:
-            outputs = outputs + attention_outputs
-
-        return outputs  # hidden-states, present_key_value_states, (self-attention position bias), (self-attention weights), (cross-attention position bias), (cross-attention weights)
 

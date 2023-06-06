@@ -1,5 +1,6 @@
 import pdb
 import re
+import time
 
 import numpy as np
 import pandas as pd
@@ -7,6 +8,8 @@ import requests
 import json
 from keybert import KeyBERT
 from wikidata.client import Client
+
+from data import get_dataset
 
 
 def text_to_graph_wikidata(
@@ -102,49 +105,60 @@ def print_info_triples(triples):
             print('Error with ' + str(s))
 
 
-
-def add_special_tokens(
-        question, #domanda
+def text_to_keywords(
+        text, #domanda
         ):
 
     kw_model = KeyBERT()
-    kw = kw_model.extract_keywords(question)
+    kw = kw_model.extract_keywords(text)
     txt = [kw[i][0].lower() for i in range(len(kw))]
     txt = np.unique(txt)
 
+    return txt
+
+
+
+def add_special_tokens(
+        question, #domanda
+        kw, #keywords
+        ):
+
     new_question = question
-    for word in txt:
+    for word in kw:
         idx = re.search(r"\b({})\b".format(word), new_question, re.IGNORECASE).start()
-        new_question = new_question[:idx] + "<REL_TOKEN> " + new_question[idx:]
+        new_question = new_question[:idx] + "<REL_TOKEN><GNN_TOK> " + new_question[idx:]
 
     return new_question
 
 
+
 def text_to_graph_concept(
         N, #numero di salti
-        text, #domanda
-        graph, #grafo
-        subj, #first arg
+        kw, #domanda
         ):
 
-    text = text.split()
-    txt = [re.sub("[^a-z]", "", text[i + 1].lower()) for i in range(len(text)) if text[i] == "<REL_TOKEN>"]
+    rel = 'rel'
+    subj = 'arg1'
+    obj = 'arg2'
+
+    graph = get_dataset('conceptnet')
+    graph = graph['train']
+    graph = graph.to_pandas()
 
     triplets_list = []
-    entities_list = txt
+    entities_list = kw
 
     for i in range(N):
 
-        triplets = graph.loc[graph[subj].isin(txt)][['arg1', 'rel', 'arg2']].to_numpy()
+        filtered = graph.loc[graph[subj].isin(kw)][[subj, rel, obj]]
+        triplets = filtered.to_numpy()
         triplets = [(item[0], item[1], item[2]) for item in triplets]
         triplets = np.unique(triplets, axis=0)
         triplets_list.extend([triplet for triplet in triplets])
 
-        entities = [triplet[2] for triplet in triplets]
-        entities = [entity for entity in entities if entity not in entities_list]
-        txt = np.unique(entities)
+        kw = filtered.loc[~filtered[obj].isin(entities_list)][obj].drop_duplicates().to_numpy()
 
-        entities_list = np.hstack((entities_list, txt))
+        entities_list = np.hstack((entities_list, kw))
 
     return triplets_list
 
@@ -154,30 +168,10 @@ def print_triplets(triplets):
         print(triplet[0] + " -> " + triplet[1] + " -> " + triplet[2])
 
 
-def graph_to_rel(triplets):
-    relations = {}
-    nodes = np.unique([item for rel in triplets for item in [rel[0], rel[2]]])
-
-    for rel in triplets:
-
-        if rel[1] in relations.keys():
-            relations[rel[1]].append((rel[0], rel[2]))
-        else:
-            relations[rel[1]] = [(rel[0], rel[2])]
-
-    for node in nodes:
-
-        if "self_rel" in relations.keys():
-            relations["self_rel"].append((node, node))
-        else:
-            relations["self_rel"] = [(node, node)]
-
-    return relations
-
-
-def graph_to_nodes(triplets):
+def graph_to_nodes_and_rel(triplets):
 
     edges = {}
+    relations = {}
 
     for rel in triplets:
 
@@ -193,15 +187,59 @@ def graph_to_nodes(triplets):
         else:
             edges[rel[2]] = [rel[1]]
 
-    return edges
+        if rel[1] in relations.keys():
+            relations[rel[1]].append((rel[0], rel[2]))
+        else:
+            relations[rel[1]] = [(rel[0], rel[2])]
+
+    return {'nodes': edges, 'relations': relations}
 
 
+def create_memory(model, graph, args):
+
+    sentences = list(graph.keys())
+    embeddings = {}
+    # Loop through each sentence in the list
+    for sentence in sentences:
+        # Encode the sentence into a 384 dimensional vector
+        embedding = model.encode(sentence, **args)
+        # Store the embedding in the dictionary with the sentence as the key
+        embeddings[sentence] = embedding
+    return embeddings
+
+
+"""
 def rel_to_adj(relations):
     #controllare nuovo esito se giusto
+    #pdb.set_trace()
     g = {k: vs for k, vs in relations.items() if vs is not None}
     edges = [(a, b) for k, bs in g.items() for a, b in bs]
     df = pd.DataFrame(edges)
-    A = pd.crosstab(df[0], df[1])
-    A[A>=2] = 1
+    if df.shape[0] > 500000:
+        chunk_size = 500000
+        chunks = [x for x in range(0, df.shape[0], chunk_size)]
+        adj = pd.concat([pd.crosstab(df.iloc[chunks[i]:chunks[i + 1], 0], df.iloc[chunks[i]:chunks[i + 1], 1]) for i in range(0, len(chunks) - 1)])
+        adj_dict = {}
+        if adj.loc[adj.index.duplicated()].shape[0] != 0:
+            key = adj.index
+            for k in key:
+                if k in adj.index[adj.index.duplicated()]:
+                    adj_dict[k] = adj.loc[k].sum()
+                else:
+                    adj_dict[k] = adj.loc[k]
+            A = pd.DataFrame.from_dict(adj_dict, orient='index')
+        else:
+            A = adj
+
+    else:
+        A = pd.crosstab(df[0], df[1])
+
+    A[A.isna()] = 0
+    A[A >= 2] = 1
 
     return A
+"""
+
+
+
+

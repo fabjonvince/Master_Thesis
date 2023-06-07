@@ -16,8 +16,8 @@ from model import GNNQA
 from t5 import T5GNNForConditionalGeneration
 from pytorch_lightning import Trainer
 from sentence_transformers import SentenceTransformer
-from lightning.pytorch.callbacks.early_stopping import EarlyStopping
-from lightning.pytorch.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks.early_stopping import EarlyStopping
+from pytorch_lightning.callbacks import ModelCheckpoint
 
 
 argparser = argparse.ArgumentParser()

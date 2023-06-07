@@ -150,7 +150,8 @@ def text_to_graph_concept(
 
     for i in range(N):
 
-        filtered = graph.loc[graph[subj].isin(kw)][[subj, rel, obj]]
+        kw = [k for k in (set(kw) & set(graph.index))]
+        filtered = graph.loc[kw, [subj, rel, obj]]
         triplets = filtered.to_numpy()
         triplets = [(item[0], item[1], item[2]) for item in triplets]
         triplets = np.unique(triplets, axis=0)
@@ -159,6 +160,8 @@ def text_to_graph_concept(
         kw = filtered.loc[~filtered[obj].isin(entities_list)][obj].drop_duplicates().to_numpy()
 
         entities_list = np.hstack((entities_list, kw))
+
+    triplets_list.extend([(entity, 'self', entity) for entity in entities_list])
 
     return triplets_list
 
@@ -195,16 +198,10 @@ def graph_to_nodes_and_rel(triplets):
     return {'nodes': edges, 'relations': relations}
 
 
-def create_memory(model, graph, args):
+def create_memory(model, sentences, args):
 
-    sentences = list(graph.keys())
-    embeddings = {}
-    # Loop through each sentence in the list
-    for sentence in sentences:
-        # Encode the sentence into a 384 dimensional vector
-        embedding = model.encode(sentence, **args)
-        # Store the embedding in the dictionary with the sentence as the key
-        embeddings[sentence] = embedding
+    embeddings = [{k: v for k in sentences for v in model.encode(k, **args)}]
+
     return embeddings
 
 

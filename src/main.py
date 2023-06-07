@@ -1,4 +1,5 @@
 import argparse
+import os
 import time
 from collections import defaultdict
 from os.path import exists
@@ -6,9 +7,8 @@ import pdb
 
 import numpy as np
 from datasets import load_from_disk
-from pytorch_lightning.loggers import wandb
 from transformers import T5Tokenizer
-
+import wandb
 from preprocess import print_info_triples, text_to_graph_wikidata, \
     text_to_graph_concept, add_special_tokens, text_to_keywords, create_memory, graph_to_nodes_and_rel
 from data import get_dataset
@@ -23,7 +23,7 @@ from lightning.pytorch.callbacks import ModelCheckpoint
 argparser = argparse.ArgumentParser()
 argparser.add_argument('--dataset', type=str, default='eli5', help='Dataset to use')
 argparser.add_argument('--graph', type=str, default='conceptnet', help='Graph to use')
-argparser.add_argument('--train_samples', type=int, default=100, help='Number of train samples')
+argparser.add_argument('--train_samples', type=int, default=10, help='Number of train samples')
 argparser.add_argument('--val_samples', type=int, default=10, help='Number of validation samples')
 argparser.add_argument('--test_samples', type=int, default=10, help='Number of test samples')
 argparser.add_argument('--layer_with_gnn', type=int, default=[1, 2], help='Layers with KIL')
@@ -38,6 +38,7 @@ argparser.add_argument('--patience', type=int, default=3, help='Patience for ear
 argparser.add_argument('--gpus', type=int, default=1, help='Gpus')
 argparser.add_argument('--max_epochs', type=int, default=1, help='max number of epochs')
 argparser.add_argument('--save_top_k', type=int, default=1, help='save top k checkpoints')
+#argparser.add_argument('--skip_test', type=bool, default=False, action='store_true', help='skip test')
 name_mapping = {
 "eli5": ("train_eli5", "validation_eli5", "test_eli5", "title", "answers"),
 "conceptnet": ("rel", "arg1", "arg2"),
@@ -47,7 +48,7 @@ name_mapping = {
 def main(args):
     pdb.set_trace()
     print("In Main")
-    wandb.login()
+    wandb.login(key='342bec801c9a0a847e9479c10f2b1dd5e3f8261b')
 
     dataset_columns = name_mapping.get(args.dataset, None)
     train_name = dataset_columns[0]
@@ -61,7 +62,7 @@ def main(args):
     #load dataset
     if args.load_dataset_from is not None:
 
-        dataset = load_from_disk('dataset/eli5_100_conceptnet')
+        dataset = load_from_disk('dataset/eli5_10_conceptnet')
 
     else:
 
@@ -136,12 +137,16 @@ def main(args):
             lambda example: graph_to_nodes_and_rel(example['graph']))
 
 
-        dataset.save_to_disk('dataset/eli5_100_conceptnet')
+        dataset.save_to_disk('dataset/eli5_10_conceptnet')
 
 
-    rels = [key for d in (dataset[train_name]['relations'], dataset[eval_name]['relations'], dataset[test_name]['relations']) for key in d.keys()]
+    nodes = np.unique([s for d in dataset[train_name]['graph'] for s,_,s in d] + \
+                     [s for d in dataset[eval_name]['graph'] for s,_,s in d] + \
+                     [s for d in dataset[test_name]['graph'] for s,_,s in d])
 
-    nodes = [key for d in (dataset[train_name]['nodes'], dataset[eval_name]['nodes'], dataset[test_name]['nodes']) for key in d.keys()]
+    rels = np.unique([k for d in dataset[train_name]['graph'] for _,k,_ in d] + \
+                     [k for d in dataset[eval_name]['graph'] for _,k,_ in d] + \
+                     [k for d in dataset[test_name]['graph'] for _,k,_ in d])
 
     # Load a pretrained model with all-MiniLM-L12-v2 checkpoint
     model = SentenceTransformer('all-MiniLM-L12-v2')
@@ -152,14 +157,24 @@ def main(args):
     setattr(args, 'n_nodes', len(memory_nodes))
     setattr(args, 'gnn_embs_size', args.sentence_transformer_embedding_size)
 
+    """
     run = wandb.init(project='gnnqa', config={
         'epochs': args.max_epochs,
     })
+    """
+    # set the wandb project where this run will be logged
+    os.environ["WANDB_PROJECT"] = "tesim"
+
+    # save your trained model checkpoint to wandb
+    os.environ["WANDB_LOG_MODEL"] = "true"
+
+    # turn off watch to log faster
+    os.environ["WANDB_WATCH"] = "false"
 
     # model creation
     model = T5GNNForConditionalGeneration.from_pretrained('t5-base', args)
     gnnqa = GNNQA(model=model, memory_rels=memory_rels, memory_nodes=memory_nodes)
-    trainer_args = {'max_epochs': args.max_epochs, 'gpus': args.gpus}
+    trainer_args = {'max_epochs': args.max_epochs, 'gpus': args.gpus, 'report_to': 'wandb'}
 
     early_stopper = EarlyStopping(monitor='val_loss', patience=args.patience, mode='min')
     md_checkpoint = ModelCheckpoint(monitor='val_loss', save_top_k=args.save_top_k, mode='min', dirpath='checkpoints', filename='gnnqa-{epoch:02d}-{val_loss:.2f}')

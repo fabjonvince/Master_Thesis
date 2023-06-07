@@ -27,6 +27,8 @@ class GNNQA(pl.LightningModule):
                 rels=None,
                 keywords=None,
                 rels_ids=None,
+                model_lr=None,
+                gnn_lr=None,
                 ):
 
         print('Forward step')

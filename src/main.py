@@ -1,16 +1,13 @@
 import argparse
 import os
 import time
-from collections import defaultdict
-from os.path import exists
 import pdb
 
 import numpy as np
 from datasets import load_from_disk
-from transformers import T5Tokenizer
+from transformers import T5Tokenizer, TrainingArguments
 import wandb
-from preprocess import print_info_triples, text_to_graph_wikidata, \
-    text_to_graph_concept, add_special_tokens, text_to_keywords, create_memory, graph_to_nodes_and_rel
+from preprocess import text_to_graph_concept, add_special_tokens, text_to_keywords, create_memory, graph_to_nodes_and_rel
 from data import get_dataset
 from model import GNNQA
 from t5 import T5GNNForConditionalGeneration
@@ -35,10 +32,11 @@ argparser.add_argument('--sentence_transformer_embedding_size', type=int, defaul
 argparser.add_argument('--max_length', type=int, default=512, help='Max length of the input sequence')
 argparser.add_argument('--graph_depth', type=int, default=3, help='Graph depth')
 argparser.add_argument('--patience', type=int, default=3, help='Patience for early stopping')
-argparser.add_argument('--gpus', type=int, default=1, help='Gpus')
+argparser.add_argument('--gpus', type=int, default='gpu', help='Gpus')
 argparser.add_argument('--max_epochs', type=int, default=1, help='max number of epochs')
 argparser.add_argument('--save_top_k', type=int, default=1, help='save top k checkpoints')
-#argparser.add_argument('--skip_test', type=bool, default=False, action='store_true', help='skip test')
+argparser.add_argument('--optuna_pruner_callback', type=str, default=None, help='optuna pruner callback')
+argparser.add_argument('--skip_test', default=False, action='store_true', help='skip test')
 name_mapping = {
 "eli5": ("train_eli5", "validation_eli5", "test_eli5", "title", "answers"),
 "conceptnet": ("rel", "arg1", "arg2"),
@@ -158,7 +156,7 @@ def main(args):
     setattr(args, 'gnn_embs_size', args.sentence_transformer_embedding_size)
 
     """
-    run = wandb.init(project='gnnqa', config={
+    run = wandb.init(project='tesim', config={
         'epochs': args.max_epochs,
     })
     """
@@ -174,11 +172,16 @@ def main(args):
     # model creation
     model = T5GNNForConditionalGeneration.from_pretrained('t5-base', args)
     gnnqa = GNNQA(model=model, memory_rels=memory_rels, memory_nodes=memory_nodes)
-    trainer_args = {'max_epochs': args.max_epochs, 'gpus': args.gpus, 'report_to': 'wandb'}
+    #training_args = TrainingArguments(report_to='wandb')
+    trainer_args = {'accelerator' : args.gpus, 'max_epochs' : args.max_epochs}
 
     early_stopper = EarlyStopping(monitor='val_loss', patience=args.patience, mode='min')
     md_checkpoint = ModelCheckpoint(monitor='val_loss', save_top_k=args.save_top_k, mode='min', dirpath='checkpoints', filename='gnnqa-{epoch:02d}-{val_loss:.2f}')
-    trainer = Trainer(trainer_args, callbacks=[early_stopper, md_checkpoint])
+    if args.optuna_pruner_callback is None:
+        trainer = Trainer(trainer_args, callbacks=[early_stopper, md_checkpoint])
+        #trainer = Trainer(trainer_args, args=training_args, callbacks=[early_stopper, md_checkpoint])
+        #else aggiungere optuna pruner alle callbacks
+
     trainer.fit(model=gnnqa, train_dataloaders=dataset[train_name], val_dataloaders=dataset[eval_name])
 
     wandb.log({'val_loss': trainer.callback_metrics['val_loss'], 'accuracy': trainer.callback_metrics['accuracy']})

@@ -1,3 +1,5 @@
+import pdb
+
 import pytorch_lightning as pl
 import torch
 from torch import tensor
@@ -38,8 +40,7 @@ class GNNQA(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
 
-        print('training step ')
-
+        pdb.set_trace()
         input_ids = batch['input_ids']
         input_ids = tensor(input_ids, dtype=torch.int, device=self.device)
         attention_mask = batch['attention_mask']
@@ -47,8 +48,8 @@ class GNNQA(pl.LightningModule):
         labels = batch['answer_tok']['input_ids']
         graph = batch['graph']
         rels_ids = {k: v for v, k in enumerate(self.memory_rels.keys())}
-        batch['rel_mask'] = (batch['input_ids'] == 32100).int()
-        batch['gnn_mask'] = (batch['input_ids'] == 32101).int()
+        batch['rel_mask'] = (input_ids == 32100).int()
+        batch['gnn_mask'] = (input_ids == 32101).int()
         keywords = batch['keywords']
         reasoning_path = AllReasoningPath()
         reasoning_path.set_root_nodes(keywords, 2)
@@ -60,14 +61,13 @@ class GNNQA(pl.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        print('training step ')
-
+        pdb.set_trace()
         input_ids = batch['input_ids']
         input_ids = tensor(input_ids, dtype=torch.int, device=self.device)
         graph = batch['graph']
         rels_ids = {k: v for v, k in enumerate(self.memory_rels.keys())}
-        batch['rel_mask'] = (batch['input_ids'] == 32100).int()
-        batch['gnn_mask'] = (batch['input_ids'] == 32101).int()
+        batch['rel_mask'] = (input_ids == 32100).int()
+        batch['gnn_mask'] = (input_ids == 32101).int()
         keywords = batch['keywords']
         reasoning_path = AllReasoningPath()
         reasoning_path.set_root_nodes(keywords, 2)

@@ -101,7 +101,7 @@ def graph_to_nodes_and_rel(triplets):
 
 def create_memory(model, sentences, args):
     embs = model.encode(sentences, **args)
-    embeddings = [{k: v for k, v in zip(sentences, embs)}]
+    embeddings = {k: v for k, v in zip(sentences, embs)}
 
     return embeddings
 

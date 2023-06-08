@@ -91,7 +91,7 @@ def main(args):
             lambda example: tokenizer(example['question'], padding='max_length', truncation=True, max_length=args.max_length, return_tensors='pt'))
 
         dataset[train_name] = dataset[train_name].map(
-            lambda example: {'answer_tok': tokenizer(example[answers_name]['text'], padding='max_length', truncation=True, max_length=args.max_length, return_tensors='pt')})
+            lambda example: {'answer_tok': tokenizer(example[answers_name]['text'], padding='max_length', truncation=True, max_length=512, return_tensors='pt')})
 
         dataset[train_name] = dataset[train_name].map(
             lambda example: {'graph': text_to_graph_concept(args.graph_depth, example['keywords'])})
@@ -112,7 +112,7 @@ def main(args):
             lambda example: tokenizer(example['question'], padding='max_length', truncation=True, max_length=args.max_length, return_tensors='pt'))
 
         dataset[eval_name] = dataset[eval_name].map(
-            lambda example: {'answer_tok': tokenizer(example[answers_name]['text'], padding='max_length', truncation=True, max_length=args.max_length, return_tensors='pt')})
+            lambda example: {'answer_tok': tokenizer(example[answers_name]['text'], padding='max_length', truncation=True, max_length=512, return_tensors='pt')})
 
         dataset[eval_name] = dataset[eval_name].map(
             lambda example: {'graph': text_to_graph_concept(args.graph_depth, example['keywords'])})
@@ -133,7 +133,7 @@ def main(args):
             lambda example: tokenizer(example['question'], padding='max_length', truncation=True, max_length=args.max_length, return_tensors='pt'))
 
         dataset[test_name] = dataset[test_name].map(
-            lambda example: {'answer_tok': tokenizer(example[answers_name]['text'], padding='max_length', truncation=True, max_length=args.max_length, return_tensors='pt')})
+            lambda example: {'answer_tok': tokenizer(example[answers_name]['text'], padding='max_length', truncation=True, max_length=512, return_tensors='pt')})
 
         dataset[test_name] = dataset[test_name].map(
             lambda example: {'graph': text_to_graph_concept(args.graph_depth, example['keywords'])})
@@ -171,7 +171,7 @@ def main(args):
 
     # model creation
     model = T5GNNForConditionalGeneration.from_pretrained(args.checkpoint_summarizer, args)
-    gnnqa = GNNQA(model=model, memory_rels=memory_rels, memory_nodes=memory_nodes)
+    gnnqa = GNNQA(model=model, memory_rels=memory_rels, memory_nodes=memory_nodes, tokenizer=tokenizer)
 
     print("In Main")
 

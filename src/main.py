@@ -46,7 +46,6 @@ name_mapping = {
 
 
 def main(args):
-    pdb.set_trace()
     print("In Main")
     wandb.login(key='342bec801c9a0a847e9479c10f2b1dd5e3f8261b')
 
@@ -62,7 +61,7 @@ def main(args):
     #load dataset
     if args.load_dataset_from is not None:
 
-        dataset = load_from_disk('dataset/eli5_10_conceptnet')
+        dataset = load_from_disk(args.load_dataset_from)
 
     else:
 
@@ -91,8 +90,8 @@ def main(args):
         dataset[train_name] = dataset[train_name].map(
             lambda example: {'graph': text_to_graph_concept(args.graph_depth, example['keywords'])})
 
-        dataset[train_name] = dataset[train_name].map(
-            lambda example: graph_to_nodes_and_rel(example['graph']))
+        #dataset[train_name] = dataset[train_name].map(
+        #    lambda example: graph_to_nodes_and_rel(example['graph']))
 
 
 
@@ -112,8 +111,8 @@ def main(args):
         dataset[eval_name] = dataset[eval_name].map(
             lambda example: {'graph': text_to_graph_concept(args.graph_depth, example['keywords'])})
 
-        dataset[eval_name] = dataset[eval_name].map(
-            lambda example: graph_to_nodes_and_rel(example['graph']))
+        #dataset[eval_name] = dataset[eval_name].map(
+        #    lambda example: graph_to_nodes_and_rel(example['graph']))
 
 
 
@@ -133,11 +132,11 @@ def main(args):
         dataset[test_name] = dataset[test_name].map(
             lambda example: {'graph': text_to_graph_concept(args.graph_depth, example['keywords'])})
 
-        dataset[test_name] = dataset[test_name].map(
-            lambda example: graph_to_nodes_and_rel(example['graph']))
+        #dataset[test_name] = dataset[test_name].map(
+        #    lambda example: graph_to_nodes_and_rel(example['graph']))
 
 
-        dataset.save_to_disk('dataset/eli5_10_conceptnet')
+        dataset.save_to_disk(f'dataset/eli5_{args.train_samples}_{args.val_samples}_{args.test_samples}_conceptnet')
 
 
     nodes = np.unique([s for d in dataset[train_name]['graph'] for s,_,s in d] + \
@@ -149,7 +148,8 @@ def main(args):
                      [k for d in dataset[test_name]['graph'] for _,k,_ in d])
 
     # Load a pretrained model with all-MiniLM-L12-v2 checkpoint
-    model = SentenceTransformer('all-MiniLM-L12-v2')
+    model = SentenceTransformer('all-MiniLM-L12-v2').cuda()
+    pdb.set_trace()
     memory_nodes = create_memory(model, nodes, {'convert_to_tensor': True})
     memory_rels = create_memory(model, rels, {'convert_to_tensor': True})
 

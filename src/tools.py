@@ -93,3 +93,20 @@ def extract_values_from_tensor(tensor, indices):
         result.append(torch.stack(row_result))
 
     return result
+
+
+def get_rouge_scores(references, predictions ):
+    rouge_metric = load_metric("rouge")
+    decoded_preds = ["\n".join(nltk.sent_tokenize(pred.strip())) for pred in predictions]
+    decoded_labels = ["\n".join(nltk.sent_tokenize(label.strip())) for label in references]
+    rouge_scores = rouge_metric.compute(predictions=decoded_preds, references=decoded_labels, use_stemmer=True)
+    rouge_scores_final = {key: value.mid.fmeasure * 100 for key, value in rouge_scores.items()}
+    rouge_scores_final = {k: round(v, 2) for k, v in rouge_scores_final.items()}
+    rouge_scores_final['R1_prec'] = rouge_scores['rouge1'].mid.precision * 100
+    return rouge_scores_final
+
+def get_bert_scores(predictions, references):
+    bertscore = load_metric("bertscore")
+    results = bertscore.compute(predictions=predictions, references=references, model_type="distilbert-base-uncased")
+    results = {'BS_' + k: (sum(v) / len(v)) * 100 for k, v in results.items() if k in ['precision', 'recall', 'f1']}
+    return results

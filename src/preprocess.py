@@ -136,26 +136,22 @@ def text_to_graph_concept(
         N, #numero di salti
         kw, #domanda
         ):
-
-    pdb.set_trace()
-
-    rel = 'rel'
-    subj = 'arg1'
     obj = 'arg2'
 
     graph = get_dataset('conceptnet')
     graph = graph['train']
     graph = graph.to_pandas()
-
+    graph.set_index('arg1', inplace=True)
     triplets_list = []
     entities_list = kw
 
     for i in range(N):
-
         kw = [k for k in (set(kw) & set(graph.index))]
-        filtered = graph.loc[kw, [subj, rel, obj]]
-        triplets = filtered.to_numpy()
-        triplets = [(item[0], item[1], item[2]) for item in triplets]
+        #filtered = graph.loc[kw, [subj, rel, obj]] #
+        filtered = graph.loc[kw]
+        #triplets = filtered.to_numpy()
+        #triplets = [(item[0], item[1], item[2]) for item in triplets] #
+        triplets = [(row.Index, row.rel, row.arg2) for row in filtered.itertuples(index=True)]
         triplets = np.unique(triplets, axis=0)
         triplets_list.extend([triplet for triplet in triplets])
 

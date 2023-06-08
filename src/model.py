@@ -1,39 +1,38 @@
-import pdb
-
 import pytorch_lightning as pl
 import torch
-from sentence_transformers import SentenceTransformer
 from torch import tensor
 
-from tools import AllReasoningPath
+from tools import AllReasoningPath, get_rouge_scores
 
 
 class GNNQA(pl.LightningModule):
-    def __init__(self, model=None, memory_rels=None, memory_nodes=None):
+    def __init__(self, model=None, memory_rels=None, memory_nodes=None,  tokenizer=None): # model_lr=None, gnn_lr=None,
         super().__init__()
         self.model = model
         self.memory_rels = memory_rels
         self.memory_nodes = memory_nodes
+        #self.model_lr = model_lr
+        #self.gnn_lr = gnn_lr
+        self.tokenizer = tokenizer
+        self.val_metric = []
 
     def forward(self,
                 input_ids,
                 attention_mask,
                 labels=None,
-                graph=None,
+                gnn_triplets=None,
                 gnn_mask=None,
                 rel_mask=None,
                 current_reasoning_path=None,
                 nodes=None,
-                rels=None,
-                keywords=None,
                 rels_ids=None,
                 ):
 
         print('Forward step')
 
-        output = self.model(input_ids=input_ids, attention_mask=attention_mask, labels=labels, graph=graph,
+        output = self.model(input_ids=input_ids, attention_mask=attention_mask, labels=labels, gnn_triplets=gnn_triplets,
                             gnn_mask=gnn_mask, rel_mask=rel_mask, current_reasoning_path=current_reasoning_path,
-                            nodes=nodes, rels=rels, keywords=keywords, rels_ids=rels_ids)
+                            nodes=nodes, rels_ids=rels_ids)
 
         return output.loss, output.logits
 
@@ -54,7 +53,7 @@ class GNNQA(pl.LightningModule):
         reasoning_path = AllReasoningPath()
         reasoning_path.set_root_nodes(keywords, 2)
 
-        loss = self(input_ids=input_ids, attention_mask=attention_mask, labels=labels, graph=graph,
+        loss = self(input_ids=input_ids, attention_mask=attention_mask, labels=labels, gnn_triplets=graph,
                     gnn_mask=batch['gnn_mask'], rel_mask=batch['rel_mask'], current_reasoning_path=reasoning_path,
                     nodes=self.memory_nodes, rels_ids=rels_ids)[0]
 
@@ -73,15 +72,25 @@ class GNNQA(pl.LightningModule):
         reasoning_path = AllReasoningPath()
         reasoning_path.set_root_nodes(keywords, 2)
 
-        loss = self.model.generate(input_ids=input_ids, graph=graph,
+        predictions = self.model.generate(input_ids=input_ids, gnn_triplets=graph,
                                    gnn_mask=batch['gnn_mask'], rel_mask=batch['rel_mask'],
                                    current_reasoning_path=reasoning_path,
                                    nodes=self.memory_nodes, rels_ids=rels_ids)
+        predictions = self.tokenizer.decode(predictions[0], skip_special_tokens=True)
+        targets = [ans['text'] for ans in batch['answer']]
+        val_metric = get_rouge_scores(predictions, targets)
+        self.val_metric.extend(val_metric['R'])
+        return
 
-        return loss
+    def on_validation_epoch_end(self):
+        self.log('val_rouge', sum(self.val_metric)/len(self.val_metric))
+        self.val_metric = []
+
 
     def configure_optimizers(self):
-        return torch.optim.SGD(self.parameters(), lr=0.1)
+        #opt1 = torch.optim.SGD(self.parameters(), lr=self.model_lr)
+        #opt2 = torch.optim.SGD(self.parameters(), lr=self.model_lr)
+        return torch.optim.SGD(self.parameters(), lr=0.00001)
 
 
 

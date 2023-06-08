@@ -137,6 +137,8 @@ def text_to_graph_concept(
         kw, #domanda
         ):
 
+    pdb.set_trace()
+
     rel = 'rel'
     subj = 'arg1'
     obj = 'arg2'

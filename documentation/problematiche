@@ -1,0 +1,2 @@
+1. kw bisogna normalizzare: rimuovere anche le s finali.
+2. preprocess linea 155: data.index ritorna dei numeri

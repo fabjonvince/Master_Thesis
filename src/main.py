@@ -2,16 +2,13 @@ import argparse
 from datetime import datetime
 import os
 import time
-from collections import defaultdict
-from os.path import exists
 import pdb
 
 import numpy as np
 from datasets import load_from_disk
-from transformers import T5Tokenizer
+from transformers import T5Tokenizer, TrainingArguments
 import wandb
-from preprocess import print_info_triples, text_to_graph_wikidata, \
-    text_to_graph_concept, add_special_tokens, text_to_keywords, create_memory, graph_to_nodes_and_rel
+from preprocess import text_to_graph_concept, add_special_tokens, text_to_keywords, create_memory, graph_to_nodes_and_rel
 from data import get_dataset
 from model import GNNQA
 from t5 import T5GNNForConditionalGeneration
@@ -46,6 +43,7 @@ argparser.add_argument('--save_top_k', type=int, default=1, help='save top k che
 argparser.add_argument('--dont_save', default=False, action='store_true', help='do not save the model')
 argparser.add_argument('--no_wandb', default=False, action='store_true', help='do not use wandb')
 argparser.add_argument('--no_gnn', default=False, action='store_true', help='do not use gnn')
+argparser.add_argument('--optuna_pruner_callback', default=None, help='optuna pruner callback')
 #argparser.add_argument('--skip_test', type=bool, default=False, action='store_true', help='skip test')
 name_mapping = {
 "eli5": ("train_eli5", "validation_eli5", "test_eli5", "title", "answers"),
@@ -151,6 +149,7 @@ def main(args):
     nodes = np.unique([s for d in dataset[train_name]['graph'] for s,_,s in d] + \
                      [s for d in dataset[eval_name]['graph'] for s,_,s in d] + \
                      [s for d in dataset[test_name]['graph'] for s,_,s in d])
+
     rels = np.unique([k for d in dataset[train_name]['graph'] for _,k,_ in d] + \
                      [k for d in dataset[eval_name]['graph'] for _,k,_ in d] + \
                      [k for d in dataset[test_name]['graph'] for _,k,_ in d])

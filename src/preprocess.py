@@ -3,106 +3,9 @@ import re
 import time
 
 import numpy as np
-import pandas as pd
-import requests
-import json
 from keybert import KeyBERT
-from wikidata.client import Client
 
 from data import get_dataset
-
-
-def text_to_graph_wikidata(
-        N, #numero di salti
-        text, #domanda
-        ):
-
-    kw_model = KeyBERT()
-    kw = kw_model.extract_keywords(text)
-    txt = [kw[i][0].lower() for i in range(len(kw))]
-    txt = np.unique(txt)
-    ids = [get_id(word) for word in txt]
-    txt_id = ['<id_word> ' + ids[i] + ' <word> ' + txt[i] + ' <desc> ' + extract_info_node(ids[i])[1] for i in range(len(txt)) if ids[i] is not None]
-    triplets_list = []
-    entities_list = txt_id
-
-    for i in range(N):
-        # Get all entities for each text
-
-        triplets = extract_triplets(txt_id)
-        #triplets = [(triplet[0], triplet[1], triplet[2]) for triplet in triplets]
-        triplets = np.unique(triplets, axis=0)
-        triplets_list.extend([triplet for triplet in triplets])
-
-        entities = [triplet[2] for triplet in triplets]
-        entities = [entity for entity in entities if entity not in entities_list]
-        txt_id = np.unique(entities)
-
-        entities_list = np.hstack((entities_list, txt_id))
-
-    return triplets_list
-
-def get_id(text):
-
-    url = "https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json&language=en&type=item&search=" + text
-    response = requests.get(url)
-    data = json.loads(response.text)
-    if data['search']:
-        id = data['search'][0]['id']
-        return id
-    else:
-        return None
-
-def extract_triplets(txt_ids):
-
-    triplets = []
-
-    for ktxt in txt_ids:
-
-        wid = ktxt.split('<id_word>')[1].split('<word>')[0].strip() #word id
-        url = "https://www.wikidata.org/w/api.php?action=wbgetclaims&format=json&entity=" + wid
-        response = requests.get(url)
-        data = json.loads(response.text)
-        for item in data['claims']:
-            if item.startswith("P"):
-                predicate = item
-                claims = data['claims'][item][0]
-                if "mainsnak" in claims:
-                    if "datavalue" in claims["mainsnak"]:
-                        if "value" in claims["mainsnak"]["datavalue"]:
-                            value = claims['mainsnak']['datavalue']['value']
-                            if type(value) is dict and 'id' in value:
-
-                                objects = value['id']
-                                info_pred = extract_info_node(predicate)
-                                predicate = '<id_word> ' + predicate + ' <word> ' + info_pred[0] + ' <desc> ' + info_pred[1]
-                                info_obj = extract_info_node(objects)
-                                objects = '<id_word> ' + objects + ' <word> ' + info_obj[0] + ' <desc> ' + info_obj[1]
-                                triplets.append((ktxt, predicate, objects))
-
-    return triplets
-
-
-def extract_info_node(node_id):
-
-    client = Client()
-    item = client.get(node_id)
-    description = str(item.description)
-    name = str(item.label)
-
-    return [name, description]
-
-### da modificare ###
-def print_info_triples(triples):
-
-    for s, r, p in triples:
-        try:
-            extract_info_node(s)
-            extract_info_node(r)
-            extract_info_node(p)
-            print('-------------------------------')
-        except:
-            print('Error with ' + str(s))
 
 
 def text_to_keywords(
@@ -203,37 +106,6 @@ def create_memory(model, sentences, args):
     return embeddings
 
 
-"""
-def rel_to_adj(relations):
-    #controllare nuovo esito se giusto
-    #pdb.set_trace()
-    g = {k: vs for k, vs in relations.items() if vs is not None}
-    edges = [(a, b) for k, bs in g.items() for a, b in bs]
-    df = pd.DataFrame(edges)
-    if df.shape[0] > 500000:
-        chunk_size = 500000
-        chunks = [x for x in range(0, df.shape[0], chunk_size)]
-        adj = pd.concat([pd.crosstab(df.iloc[chunks[i]:chunks[i + 1], 0], df.iloc[chunks[i]:chunks[i + 1], 1]) for i in range(0, len(chunks) - 1)])
-        adj_dict = {}
-        if adj.loc[adj.index.duplicated()].shape[0] != 0:
-            key = adj.index
-            for k in key:
-                if k in adj.index[adj.index.duplicated()]:
-                    adj_dict[k] = adj.loc[k].sum()
-                else:
-                    adj_dict[k] = adj.loc[k]
-            A = pd.DataFrame.from_dict(adj_dict, orient='index')
-        else:
-            A = adj
-
-    else:
-        A = pd.crosstab(df[0], df[1])
-
-    A[A.isna()] = 0
-    A[A >= 2] = 1
-
-    return A
-"""
 
 
 

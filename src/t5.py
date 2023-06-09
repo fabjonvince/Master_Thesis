@@ -185,7 +185,7 @@ class CustomGNNLayer(torch.nn.Module):
         Returns:
             scores (list of lists): A list of lists containing the final scores for each embedding in each group.
         """
-
+        pdb.set_trace()
         # Pad the groups to make them equally sized
         max_size = max(len(group) for group in k_nodes)
         groups_padded = [F.pad(group, (0, 0, 0, max_size - len(group))) for group in k_nodes]

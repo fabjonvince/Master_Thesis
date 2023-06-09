@@ -63,6 +63,7 @@ def main(args):
     test_name = dataset_columns[2]
     question_name = dataset_columns[3]
     answers_name = dataset_columns[4]
+    device = 'gpu' if torch.cuda.is_available() else 'cpu'
 
     tokenizer = T5Tokenizer.from_pretrained('t5-base')
     tokenizer.add_special_tokens({"additional_special_tokens": tokenizer.additional_special_tokens + ["<REL_TOK>", "<GNN_TOK>"]})
@@ -88,11 +89,11 @@ def main(args):
         dataset[train_name] = dataset[train_name].map(
             lambda example: {'question': add_special_tokens(example[question_name], example['keywords'])})
 
-        dataset[train_name] = dataset[train_name].map(
-            lambda example: tokenizer(example['question'], padding='max_length', truncation=True, max_length=args.max_length, return_tensors='pt'))
+        #dataset[train_name] = dataset[train_name].map(
+            #lambda example: tokenizer(example['question'], padding='max_length', truncation=True, max_length=args.max_length, return_tensors='pt'))
 
-        dataset[train_name] = dataset[train_name].map(
-            lambda example: {'answer_tok': tokenizer(example[answers_name]['text'], padding='max_length', truncation=True, max_length=512, return_tensors='pt')})
+        #dataset[train_name] = dataset[train_name].map(
+            #lambda example: {'answer_tok': tokenizer(example[answers_name]['text'], padding='max_length', truncation=True, max_length=512, return_tensors='pt')})
 
         dataset[train_name] = dataset[train_name].map(
             lambda example: {'graph': text_to_graph_concept(args.graph_depth, example['keywords'])})
@@ -109,11 +110,11 @@ def main(args):
         dataset[eval_name] = dataset[eval_name].map(
             lambda example: {'question': add_special_tokens(example[question_name], example['keywords'])})
 
-        dataset[eval_name] = dataset[eval_name].map(
-            lambda example: tokenizer(example['question'], padding='max_length', truncation=True, max_length=args.max_length, return_tensors='pt'))
+        #dataset[eval_name] = dataset[eval_name].map(
+            #lambda example: tokenizer(example['question'], padding='max_length', truncation=True, max_length=args.max_length, return_tensors='pt'))
 
-        dataset[eval_name] = dataset[eval_name].map(
-            lambda example: {'answer_tok': tokenizer(example[answers_name]['text'], padding='max_length', truncation=True, max_length=512, return_tensors='pt')})
+        #dataset[eval_name] = dataset[eval_name].map(
+            #lambda example: {'answer_tok': tokenizer(example[answers_name]['text'], padding='max_length', truncation=True, max_length=512, return_tensors='pt')})
 
         dataset[eval_name] = dataset[eval_name].map(
             lambda example: {'graph': text_to_graph_concept(args.graph_depth, example['keywords'])})
@@ -130,11 +131,11 @@ def main(args):
         dataset[test_name] = dataset[test_name].map(
             lambda example: {'question': add_special_tokens(example[question_name], example['keywords'])})
 
-        dataset[test_name] = dataset[test_name].map(
-            lambda example: tokenizer(example['question'], padding='max_length', truncation=True, max_length=args.max_length, return_tensors='pt'))
+        #dataset[test_name] = dataset[test_name].map(
+            #lambda example: tokenizer(example['question'], padding='max_length', truncation=True, max_length=args.max_length, return_tensors='pt'))
 
-        dataset[test_name] = dataset[test_name].map(
-            lambda example: {'answer_tok': tokenizer(example[answers_name]['text'], padding='max_length', truncation=True, max_length=512, return_tensors='pt')})
+        #dataset[test_name] = dataset[test_name].map(
+            #lambda example: {'answer_tok': tokenizer(example[answers_name]['text'], padding='max_length', truncation=True, max_length=512, return_tensors='pt')})
 
         dataset[test_name] = dataset[test_name].map(
             lambda example: {'graph': text_to_graph_concept(args.graph_depth, example['keywords'])})
@@ -142,27 +143,17 @@ def main(args):
         #dataset[test_name] = dataset[test_name].map(
         #    lambda example: graph_to_nodes_and_rel(example['graph']))
 
-        nodes = set()
-        for name in [train_name, eval_name, test_name]:
-            for graph in dataset[name]['graph']:
-                nodes.update((s1, _, s2) for s1, _, s2 in graph)
+        nodes = np.unique([s for d in dataset[train_name]['graph'] for s, _, s in d] + \
+                          [s for d in dataset[eval_name]['graph'] for s, _, s in d] + \
+                          [s for d in dataset[test_name]['graph'] for s, _, s in d])
 
-        nodes = list(nodes)
-
-        rels = set()
-        for name in [train_name, eval_name, test_name]:
-            for graph in dataset[name]['graph']:
-                rels.update((r for  _, r, _ in graph))
-
-        rels = list(rels)
-
-        # rels = np.unique([k for d in dataset[train_name]['graph'] for _, k, _ in d] + \
-        #                  [k for d in dataset[eval_name]['graph'] for _, k, _ in d] + \
-        #                  [k for d in dataset[test_name]['graph'] for _, k, _ in d])
+        rels = np.unique([k for d in dataset[train_name]['graph'] for _, k, _ in d] + \
+                         [k for d in dataset[eval_name]['graph'] for _, k, _ in d] + \
+                         [k for d in dataset[test_name]['graph'] for _, k, _ in d])
 
 
         # Load a pretrained model with all-MiniLM-L12-v2 checkpoint
-        st_model = SentenceTransformer('all-MiniLM-L12-v2')
+        st_model = SentenceTransformer('all-MiniLM-L12-v2') if device == 'cpu' else SentenceTransformer('all-MiniLM-L12-v2').cuda()
 
         st_pars = {'convert_to_tensor': True, "batch_size": 256, "show_progress_bar": True}
         memory_nodes = create_memory(st_model, nodes, st_pars)

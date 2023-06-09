@@ -60,7 +60,6 @@ class GNNQA(pl.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        pdb.set_trace()
         toks = \
         self.tokenizer(batch['question'], padding='max_length', truncation=True, max_length=128, return_tensors='pt').to(self.device)
         input_ids, attention_mask = toks['input_ids'], toks['attention_mask']

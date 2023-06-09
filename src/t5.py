@@ -185,7 +185,7 @@ class CustomGNNLayer(torch.nn.Module):
         Returns:
             scores (list of lists): A list of lists containing the final scores for each embedding in each group.
         """
-
+        pdb.set_trace()
         # Pad the groups to make them equally sized
         max_size = max(len(group) for group in k_nodes)
         groups_padded = [F.pad(group, (0, 0, 0, max_size - len(group))) for group in k_nodes]
@@ -233,7 +233,7 @@ class CustomGNNLayer(torch.nn.Module):
                 current_reasoning_path: AllReasoningPath = None,
                 rels_ids=None,  # ids of the relations in the memory
                 ):
-        # pdb.set_trace()
+        #pdb.set_trace()
         # I generate the probability over all the relations
         rel_prob = self.classification_head(hidden_states[rel_mask.bool()])
         # rel_prob shape (batch_size=1, n_REL_TOK, n_rels)

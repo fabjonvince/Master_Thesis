@@ -63,6 +63,7 @@ def main(args):
     test_name = dataset_columns[2]
     question_name = dataset_columns[3]
     answers_name = dataset_columns[4]
+    device = 'gpu' if torch.cuda.is_available() else 'cpu'
 
     tokenizer = T5Tokenizer.from_pretrained('t5-base')
 
@@ -89,11 +90,11 @@ def main(args):
         dataset[train_name] = dataset[train_name].map(
             lambda example: {'question': add_special_tokens(example[question_name], example['keywords'])})
 
-        dataset[train_name] = dataset[train_name].map(
-            lambda example: tokenizer(example['question'], padding='max_length', truncation=True, max_length=args.max_length, return_tensors='pt'))
+        #dataset[train_name] = dataset[train_name].map(
+            #lambda example: tokenizer(example['question'], padding='max_length', truncation=True, max_length=args.max_length, return_tensors='pt'))
 
-        dataset[train_name] = dataset[train_name].map(
-            lambda example: {'answer_tok': tokenizer(example[answers_name]['text'], padding='max_length', truncation=True, max_length=512, return_tensors='pt')})
+        #dataset[train_name] = dataset[train_name].map(
+            #lambda example: {'answer_tok': tokenizer(example[answers_name]['text'], padding='max_length', truncation=True, max_length=512, return_tensors='pt')})
 
         dataset[train_name] = dataset[train_name].map(
             lambda example: {'graph': text_to_graph_concept(args.graph_depth, example['keywords'])})
@@ -110,11 +111,11 @@ def main(args):
         dataset[eval_name] = dataset[eval_name].map(
             lambda example: {'question': add_special_tokens(example[question_name], example['keywords'])})
 
-        dataset[eval_name] = dataset[eval_name].map(
-            lambda example: tokenizer(example['question'], padding='max_length', truncation=True, max_length=args.max_length, return_tensors='pt'))
+        #dataset[eval_name] = dataset[eval_name].map(
+            #lambda example: tokenizer(example['question'], padding='max_length', truncation=True, max_length=args.max_length, return_tensors='pt'))
 
-        dataset[eval_name] = dataset[eval_name].map(
-            lambda example: {'answer_tok': tokenizer(example[answers_name]['text'], padding='max_length', truncation=True, max_length=512, return_tensors='pt')})
+        #dataset[eval_name] = dataset[eval_name].map(
+            #lambda example: {'answer_tok': tokenizer(example[answers_name]['text'], padding='max_length', truncation=True, max_length=512, return_tensors='pt')})
 
         dataset[eval_name] = dataset[eval_name].map(
             lambda example: {'graph': text_to_graph_concept(args.graph_depth, example['keywords'])})
@@ -131,11 +132,11 @@ def main(args):
         dataset[test_name] = dataset[test_name].map(
             lambda example: {'question': add_special_tokens(example[question_name], example['keywords'])})
 
-        dataset[test_name] = dataset[test_name].map(
-            lambda example: tokenizer(example['question'], padding='max_length', truncation=True, max_length=args.max_length, return_tensors='pt'))
+        #dataset[test_name] = dataset[test_name].map(
+            #lambda example: tokenizer(example['question'], padding='max_length', truncation=True, max_length=args.max_length, return_tensors='pt'))
 
-        dataset[test_name] = dataset[test_name].map(
-            lambda example: {'answer_tok': tokenizer(example[answers_name]['text'], padding='max_length', truncation=True, max_length=512, return_tensors='pt')})
+        #dataset[test_name] = dataset[test_name].map(
+            #lambda example: {'answer_tok': tokenizer(example[answers_name]['text'], padding='max_length', truncation=True, max_length=512, return_tensors='pt')})
 
         dataset[test_name] = dataset[test_name].map(
             lambda example: {'graph': text_to_graph_concept(args.graph_depth, example['keywords'])})
@@ -153,9 +154,9 @@ def main(args):
 
 
         # Load a pretrained model with all-MiniLM-L12-v2 checkpoint
-        st_model = SentenceTransformer('all-MiniLM-L12-v2')
+        st_model = SentenceTransformer('all-MiniLM-L12-v2') if device == 'cpu' else SentenceTransformer('all-MiniLM-L12-v2').cuda()
 
-        st_pars = {'convert_to_tensor': True, "batch_size": 256, "show_progress_bar": True, "device": 'cpu'}
+        st_pars = {'convert_to_tensor': True, "batch_size": 256, "show_progress_bar": True, "device": device}
         memory_nodes = create_memory(st_model, nodes, st_pars)
         memory_rels = create_memory(st_model, rels, st_pars)
 
@@ -205,7 +206,7 @@ def main(args):
 
     trainer_args = {
         'max_epochs': args.max_epochs,
-        #'accelerator': 'gpu',
+        'accelerator': device,
         'devices':1,
         'accumulate_grad_batches': args.accumulate_grad_batches,
         'callbacks': callbacks,

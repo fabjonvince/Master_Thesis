@@ -17,6 +17,7 @@ class GNNQA(pl.LightningModule):
         #self.gnn_lr = gnn_lr
         self.tokenizer = tokenizer
         self.val_metric = []
+        torch.set_default_device('cpu')
 
     def forward(self,
                 input_ids,
@@ -40,11 +41,12 @@ class GNNQA(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
 
-        input_ids = batch['input_ids']
-        input_ids = tensor(input_ids, dtype=torch.int, device=self.device)
-        attention_mask = batch['attention_mask']
-        attention_mask = tensor(attention_mask, dtype=torch.int, device=self.device)
-        labels = batch['answer_tok']['input_ids']
+        input_ids = self.tokenizer(batch['question'], padding='max_length', truncation=True, max_length=512, return_tensors='pt')['input_ids']
+        input_ids = tensor(input_ids, dtype=torch.int)
+        attention_mask = self.tokenizer(batch['question'], padding='max_length', truncation=True, max_length=512, return_tensors='pt')['attention_mask']
+        attention_mask = tensor(attention_mask, dtype=torch.int)
+        labels = self.tokenizer(batch['answers']['text'], padding='max_length', truncation=True, max_length=512, return_tensors='pt')['input_ids']
+        labels = tensor(labels, dtype=torch.long)
         graph = batch['graph']
         rels_ids = {k: v for v, k in enumerate(self.memory_rels.keys())}
         batch['rel_mask'] = (input_ids == 32100).int()
@@ -61,12 +63,12 @@ class GNNQA(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
 
-        input_ids = batch['input_ids']
-        input_ids = tensor(input_ids, dtype=torch.int, device=self.device)
-        attention_mask = batch['attention_mask']
-        attention_mask = tensor(attention_mask, dtype=torch.int, device=self.device)
-        labels = batch['answer_tok']['input_ids']
-        labels = tensor(labels, dtype=torch.long, device=self.device)
+        input_ids = self.tokenizer(batch['question'], padding='max_length', truncation=True, max_length=512, return_tensors='pt')['input_ids']
+        input_ids = tensor(input_ids, dtype=torch.int)
+        attention_mask = self.tokenizer(batch['question'], padding='max_length', truncation=True, max_length=512, return_tensors='pt')['attention_mask']
+        attention_mask = tensor(attention_mask, dtype=torch.int)
+        labels = self.tokenizer(batch['answers']['text'], padding='max_length', truncation=True, max_length=512, return_tensors='pt')['input_ids']
+        labels = tensor(labels, dtype=torch.long)
         graph = batch['graph']
 
         rels_ids = {k: v for v, k in enumerate(self.memory_rels.keys())}

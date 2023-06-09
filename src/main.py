@@ -5,7 +5,9 @@ import time
 import pdb
 
 import numpy as np
-from datasets import load_from_disk
+import pandas as pd
+import torch
+from datasets import load_from_disk, Dataset
 from transformers import T5Tokenizer, TrainingArguments
 import wandb
 from preprocess import text_to_graph_concept, add_special_tokens, text_to_keywords, create_memory, graph_to_nodes_and_rel
@@ -44,7 +46,7 @@ argparser.add_argument('--dont_save', default=False, action='store_true', help='
 argparser.add_argument('--no_wandb', default=False, action='store_true', help='do not use wandb')
 argparser.add_argument('--no_gnn', default=False, action='store_true', help='do not use gnn')
 argparser.add_argument('--optuna_pruner_callback', default=None, help='optuna pruner callback')
-#argparser.add_argument('--skip_test', type=bool, default=False, action='store_true', help='skip test')
+argparser.add_argument('--skip_test', default=False, action='store_true', help='skip test')
 name_mapping = {
 "eli5": ("train_eli5", "validation_eli5", "test_eli5", "title", "answers"),
 "conceptnet": ("rel", "arg1", "arg2"),
@@ -141,37 +143,39 @@ def main(args):
         #dataset[test_name] = dataset[test_name].map(
         #    lambda example: graph_to_nodes_and_rel(example['graph']))
 
+        nodes = np.unique([s for d in dataset[train_name]['graph'] for s, _, s in d] + \
+                          [s for d in dataset[eval_name]['graph'] for s, _, s in d] + \
+                          [s for d in dataset[test_name]['graph'] for s, _, s in d])
 
-        dataset.save_to_disk(f'dataset/eli5_{args.train_samples}_{args.val_samples}_{args.train_samples}_conceptnet')
+        rels = np.unique([k for d in dataset[train_name]['graph'] for _, k, _ in d] + \
+                         [k for d in dataset[eval_name]['graph'] for _, k, _ in d] + \
+                         [k for d in dataset[test_name]['graph'] for _, k, _ in d])
+
+
+        # Load a pretrained model with all-MiniLM-L12-v2 checkpoint
+        st_model = SentenceTransformer('all-MiniLM-L12-v2')
+
+        st_pars = {'convert_to_tensor': True, "batch_size": 256, "show_progress_bar": True, "device": 'cpu'}
+        memory_nodes = create_memory(st_model, nodes, st_pars)
+        memory_rels = create_memory(st_model, rels, st_pars)
+
+        dataset['memory_nodes'] = Dataset.from_pandas(pd.DataFrame(data=memory_nodes))
+        dataset['memory_rels'] = Dataset.from_pandas(pd.DataFrame(data=memory_rels))
+
+        dataset.save_to_disk(f'dataset/eli5_{args.train_samples}_{args.val_samples}_{args.test_samples}_conceptnet')
+    # print(dataset['memory_rels'])
 
     print('dataset loaded')
-    '''
-    nodes = np.unique([s for d in dataset[train_name]['graph'] for s,_,s in d] + \
-                     [s for d in dataset[eval_name]['graph'] for s,_,s in d] + \
-                     [s for d in dataset[test_name]['graph'] for s,_,s in d])
 
-    rels = np.unique([k for d in dataset[train_name]['graph'] for _,k,_ in d] + \
-                     [k for d in dataset[eval_name]['graph'] for _,k,_ in d] + \
-                     [k for d in dataset[test_name]['graph'] for _,k,_ in d])
-    '''
-
-    nodes = ['eggs', 'water', 'cose', 'ciao']
-    rels = ['is', 'not', 'bo']
-
-    # Load a pretrained model with all-MiniLM-L12-v2 checkpoint
-    model = SentenceTransformer('all-MiniLM-L12-v2').cuda()
     pdb.set_trace()
-    st_pars = {'convert_to_tensor': True, "batch_size": 256, "show_progress_bar":True}
-    memory_nodes = create_memory(model, nodes, st_pars)
-    memory_rels = create_memory(model, rels, st_pars)
 
-    setattr(args, 'n_rel', len(memory_rels))
-    setattr(args, 'n_nodes', len(memory_nodes))
+    setattr(args, 'n_rel', len(dataset['memory_rels'].features))
+    setattr(args, 'n_nodes', len(dataset['memory_nodes'].features))
     setattr(args, 'gnn_embs_size', args.sentence_transformer_embedding_size)
 
     # model creation
     model = T5GNNForConditionalGeneration.from_pretrained(args.checkpoint_summarizer, args)
-    gnnqa = GNNQA(model=model, memory_rels=memory_rels, memory_nodes=memory_nodes, tokenizer=tokenizer)
+    gnnqa = GNNQA(model=model, memory_rels=dataset['memory_rels'].to_dict(), memory_nodes=dataset['memory_nodes'].to_dict(), tokenizer=tokenizer)
 
     print("In Main")
 
@@ -186,7 +190,7 @@ def main(args):
 
     if not args.no_wandb:
         logger = WandbLogger(
-            name=  run_name,
+            name=run_name,
             project=args.wandb_project,
         )
 
@@ -201,7 +205,7 @@ def main(args):
 
     trainer_args = {
         'max_epochs': args.max_epochs,
-        'accelerator': "gpu",
+        #'accelerator': 'gpu',
         'devices':1,
         'accumulate_grad_batches': args.accumulate_grad_batches,
         'callbacks': callbacks,

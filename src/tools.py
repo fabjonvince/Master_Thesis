@@ -1,5 +1,9 @@
+import nltk
+nltk.download('punkt')
 import torch
 import numpy as np
+from datasets import load_metric
+
 
 class SingleReasoningPath:
     def __init__(self, root_node, topk):
@@ -95,8 +99,9 @@ def extract_values_from_tensor(tensor, indices):
     return result
 
 
-def get_rouge_scores(references, predictions ):
+def get_rouge_scores(references, predictions):
     rouge_metric = load_metric("rouge")
+
     decoded_preds = ["\n".join(nltk.sent_tokenize(pred.strip())) for pred in predictions]
     decoded_labels = ["\n".join(nltk.sent_tokenize(label.strip())) for label in references]
     rouge_scores = rouge_metric.compute(predictions=decoded_preds, references=decoded_labels, use_stemmer=True)

@@ -136,7 +136,7 @@ class CustomKilLayer(torch.nn.Module):
         # A shape [Nrelation X Nwords X Nwords]
 
         print('oreolm layer')
-        pdb.set_trace()
+        # pdb.set_trace()
 
         # relation prediction
         prels = self.relation_pred(inputs_embeds[token_index], rel)
@@ -220,7 +220,7 @@ class CustomGNNLayer(torch.nn.Module):
         weighted_attention = weighted_attention.view(*logits.shape)
 
         weighted_attention[mask == 0] = 0
-        print("wa", weighted_attention.shape)
+        #print("wa", weighted_attention.shape)
 
         return weighted_attention, groups_stacked_tmp
 
@@ -233,7 +233,7 @@ class CustomGNNLayer(torch.nn.Module):
                 current_reasoning_path: AllReasoningPath = None,
                 rels_ids=None,  # ids of the relations in the memory
                 ):
-        pdb.set_trace()
+        # pdb.set_trace()
         # I generate the probability over all the relations
         rel_prob = self.classification_head(hidden_states[rel_mask.bool()])
         # rel_prob shape (batch_size=1, n_REL_TOK, n_rels)
@@ -274,20 +274,20 @@ class CustomGNNLayer(torch.nn.Module):
                 node_embs = list()
                 for ns in nods:
                     # turn them into embedding using the memory matrix
-                    node_embs.append(torch.stack([memory_nodes[n] for n in ns]))
+                    node_embs.append(torch.stack([torch.tensor(memory_nodes[n]) for n in ns]))
                 # compute the scores associaed to each embedding
                 scores, embs = self.calculate_scores(query.view(1, -1), k_nodes=node_embs,
                                                      probabilities=probs.view(1, -1))
 
                 scores = scores.view(scores.size(0) * scores.size(1), -1)
                 embs = embs.view(scores.size(0) * scores.size(1), -1)
-                print('scores embs', scores.shape, embs.shape)
+                #print('scores embs', scores.shape, embs.shape)
                 # weight embs for the scores
                 weighted_embs = embs * scores
-                print('weighted_embs', weighted_embs.shape)
+                #print('weighted_embs', weighted_embs.shape)
                 # Compute the mean of the weighted embeddings
                 mean_emb = torch.mean(weighted_embs, dim=0)
-                print('mean_emb', mean_emb.shape)
+                #print('mean_emb', mean_emb.shape)
 
                 # Now I have to add the topk end nodes to the reasoning path
                 # first I create a list containing tuple (rel, nodes) which are all the possibile end nodes from the current node
@@ -303,8 +303,8 @@ class CustomGNNLayer(torch.nn.Module):
                 index = 0
                 next_node = None
 
-                print(indices)
-                print(value)
+                #print(indices)
+                #print(value)
 
                 while keep:
                     # then I extract the index and the end node with the highest probability
@@ -324,6 +324,7 @@ class CustomGNNLayer(torch.nn.Module):
         output = torch.stack(output)
         output = self.gnn_reprj(output)
         # Now I update the hidden states
+
         hidden_states[gnn_mask.bool()] = hidden_states[gnn_mask.bool()] + output
 
         return hidden_states, current_reasoning_path
@@ -921,7 +922,7 @@ class T5GNNForConditionalGeneration(T5PreTrainedModel):
         >>> print(tokenizer.decode(outputs[0], skip_special_tokens=True))
         >>> # studies have shown that owning a dog is good for you.
         ```"""
-        pdb.set_trace()
+        # pdb.set_trace()
         use_cache = use_cache if use_cache is not None else self.config.use_cache
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
@@ -955,7 +956,7 @@ class T5GNNForConditionalGeneration(T5PreTrainedModel):
                 attentions=encoder_outputs[2] if len(encoder_outputs) > 2 else None,
             )
 
-        pdb.set_trace()
+        # pdb.set_trace()
         hidden_states = encoder_outputs[0]
 
         if self.model_parallel:

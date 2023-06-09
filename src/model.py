@@ -60,7 +60,7 @@ class GNNQA(pl.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-
+        pdb.set_trace()
         input_ids = batch['input_ids']
         input_ids = tensor(input_ids, dtype=torch.int, device=self.device)
         attention_mask = batch['attention_mask']

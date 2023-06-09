@@ -65,6 +65,7 @@ def main(args):
     answers_name = dataset_columns[4]
 
     tokenizer = T5Tokenizer.from_pretrained('t5-base')
+    tokenizer.add_special_tokens({"additional_special_tokens": tokenizer.additional_special_tokens + ["<REL_TOK>", "<GNN_TOK>"]})
 
     #load dataset
     if args.load_dataset_from is not None:
@@ -79,8 +80,6 @@ def main(args):
         dataset[train_name] = dataset[train_name].shuffle(seed=42).select(range(args.train_samples))
         dataset[eval_name] = dataset[eval_name].shuffle(seed=42).select(range(args.val_samples))
         dataset[test_name] = dataset[test_name].shuffle(seed=42).select(range(args.test_samples))
-
-        tokenizer.add_special_tokens({'additional_special_tokens': ['<REL_TOK>', '<GNN_TOK>']})
 
 
         dataset[train_name] = dataset[train_name].map(
@@ -143,19 +142,29 @@ def main(args):
         #dataset[test_name] = dataset[test_name].map(
         #    lambda example: graph_to_nodes_and_rel(example['graph']))
 
-        nodes = np.unique([s for d in dataset[train_name]['graph'] for s, _, s in d] + \
-                          [s for d in dataset[eval_name]['graph'] for s, _, s in d] + \
-                          [s for d in dataset[test_name]['graph'] for s, _, s in d])
+        nodes = set()
+        for name in [train_name, eval_name, test_name]:
+            for graph in dataset[name]['graph']:
+                nodes.update((s1, _, s2) for s1, _, s2 in graph)
 
-        rels = np.unique([k for d in dataset[train_name]['graph'] for _, k, _ in d] + \
-                         [k for d in dataset[eval_name]['graph'] for _, k, _ in d] + \
-                         [k for d in dataset[test_name]['graph'] for _, k, _ in d])
+        nodes = list(nodes)
+
+        rels = set()
+        for name in [train_name, eval_name, test_name]:
+            for graph in dataset[name]['graph']:
+                rels.update((r for  _, r, _ in graph))
+
+        rels = list(rels)
+
+        # rels = np.unique([k for d in dataset[train_name]['graph'] for _, k, _ in d] + \
+        #                  [k for d in dataset[eval_name]['graph'] for _, k, _ in d] + \
+        #                  [k for d in dataset[test_name]['graph'] for _, k, _ in d])
 
 
         # Load a pretrained model with all-MiniLM-L12-v2 checkpoint
         st_model = SentenceTransformer('all-MiniLM-L12-v2')
 
-        st_pars = {'convert_to_tensor': True, "batch_size": 256, "show_progress_bar": True, "device": 'cpu'}
+        st_pars = {'convert_to_tensor': True, "batch_size": 256, "show_progress_bar": True}
         memory_nodes = create_memory(st_model, nodes, st_pars)
         memory_rels = create_memory(st_model, rels, st_pars)
 

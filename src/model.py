@@ -39,10 +39,10 @@ class GNNQA(pl.LightningModule):
         return output.loss, output.logits
 
     def training_step(self, batch, batch_idx):
-
-        input_ids = self.tokenizer(batch['question'], padding='max_length', truncation=True, max_length=512, return_tensors='pt')['input_ids'].to(self.device)
-        attention_mask = self.tokenizer(batch['question'], padding='max_length', truncation=True, max_length=512, return_tensors='pt')['attention_mask'].to(self.device)
-        #attention_mask = tensor(attention_mask, dtype=torch.int)
+        toks = \
+            self.tokenizer(batch['question'], padding='max_length', truncation=True, max_length=128,
+                           return_tensors='pt').to(self.device)
+        input_ids, attention_mask = toks['input_ids'], toks['attention_mask']
         labels = self.tokenizer(batch['answers']['text'], padding='max_length', truncation=True, max_length=512, return_tensors='pt')['input_ids'].to(self.device)
         #labels = tensor(labels, dtype=torch.long)
         graph = batch['graph']
@@ -60,12 +60,10 @@ class GNNQA(pl.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        input_ids = \
-        self.tokenizer(batch['question'], padding='max_length', truncation=True, max_length=512, return_tensors='pt')[
-            'input_ids'].to(self.device)
-        attention_mask = \
-        self.tokenizer(batch['question'], padding='max_length', truncation=True, max_length=512, return_tensors='pt')[
-            'attention_mask'].to(self.device)
+        pdb.set_trace()
+        toks = \
+        self.tokenizer(batch['question'], padding='max_length', truncation=True, max_length=128, return_tensors='pt').to(self.device)
+        input_ids, attention_mask = toks['input_ids'], toks['attention_mask']
         # attention_mask = tensor(attention_mask, dtype=torch.int)
         labels = self.tokenizer(batch['answers']['text'], padding='max_length', truncation=True, max_length=512,
                                 return_tensors='pt')['input_ids'].to(self.device)

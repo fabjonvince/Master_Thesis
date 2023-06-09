@@ -190,8 +190,9 @@ class CustomGNNLayer(torch.nn.Module):
         max_size = max(len(group) for group in k_nodes)
         groups_padded = [F.pad(group, (0, 0, 0, max_size - len(group))) for group in k_nodes]
 
-        # Stack the padded groups
-        groups_stacked_tmp = torch.stack(groups_padded)
+        # Stack the padded groups and place on the same device of the model
+        groups_stacked_tmp = torch.stack(groups_padded).to(next(self.parameters()).device)
+
         mask = (groups_stacked_tmp != 0).int()[:, :, 0]
 
         # reprojection of nodes

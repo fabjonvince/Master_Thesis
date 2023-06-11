@@ -136,7 +136,6 @@ class CustomKilLayer(torch.nn.Module):
         # A shape [Nrelation X Nwords X Nwords]
 
         print('oreolm layer')
-        # pdb.set_trace()
 
         # relation prediction
         prels = self.relation_pred(inputs_embeds[token_index], rel)
@@ -185,7 +184,7 @@ class CustomGNNLayer(torch.nn.Module):
         Returns:
             scores (list of lists): A list of lists containing the final scores for each embedding in each group.
         """
-        pdb.set_trace()
+
         # Pad the groups to make them equally sized
         max_size = max(len(group) for group in k_nodes)
         groups_padded = [F.pad(group, (0, 0, 0, max_size - len(group))) for group in k_nodes]
@@ -234,7 +233,7 @@ class CustomGNNLayer(torch.nn.Module):
                 current_reasoning_path: AllReasoningPath = None,
                 rels_ids=None,  # ids of the relations in the memory
                 ):
-        pdb.set_trace()
+
         # I generate the probability over all the relations
         rel_prob = self.classification_head(hidden_states[rel_mask.bool()])
         # rel_prob shape (batch_size=1, n_REL_TOK, n_rels)
@@ -364,6 +363,7 @@ class T5GNNBlock(nn.Module):
         current_reasoning_path: AllReasoningPath = None,
         rels_ids=None,  # ids of the relations in the memory
     ):
+
         if past_key_value is not None:
             expected_num_past_key_values = 2 if encoder_hidden_states is None else 4
 
@@ -388,6 +388,7 @@ class T5GNNBlock(nn.Module):
             use_cache=use_cache,
             output_attentions=output_attentions,
         )
+
         hidden_states, present_key_value_state = self_attention_outputs[:2]
         attention_outputs = self_attention_outputs[2:]  # Keep self-attention outputs and relative position weights
 
@@ -416,6 +417,7 @@ class T5GNNBlock(nn.Module):
                 use_cache=use_cache,
                 output_attentions=output_attentions,
             )
+
             hidden_states = cross_attention_outputs[0]
 
             # clamp inf values to enable fp16 training
@@ -464,7 +466,6 @@ class T5GNNStack(T5PreTrainedModel):
 
         self.embed_tokens = embed_tokens
         self.is_decoder = config.is_decoder
-        self.current_reasoning_path = None
 
         #self.block = nn.ModuleList(
         #    [T5Block(config, has_relative_attention_bias=bool(i == 0)) for i in range(config.num_layers)]
@@ -547,8 +548,7 @@ class T5GNNStack(T5PreTrainedModel):
         current_reasoning_path: AllReasoningPath = None,
         rels_ids=None,  # ids of the relations in the memory
     ):
-        if self.current_reasoning_path is None:
-            self.current_reasoning_path = current_reasoning_path
+
         # Model parallel
         if self.model_parallel:
             torch.cuda.set_device(self.first_device)
@@ -691,7 +691,7 @@ class T5GNNStack(T5PreTrainedModel):
                         rel_mask=rel_mask,  # index of the rel tokens
                         gnn_triplets=gnn_triplets,  # list of triplets
                         memory_nodes=memory_nodes,  # node memory
-                        current_reasoning_path=self.current_reasoning_path,  # current reasoning path
+                        current_reasoning_path=current_reasoning_path,  # current reasoning path
                         rels_ids=rels_ids,  # ids of the relations in the memory
                     )
 
@@ -713,7 +713,7 @@ class T5GNNStack(T5PreTrainedModel):
                         rel_mask=rel_mask,  # index of the rel tokens
                         gnn_triplets=gnn_triplets,  # list of triplets
                         memory_nodes=memory_nodes,  # node memory
-                        current_reasoning_path=self.current_reasoning_path,  # current reasoning path
+                        current_reasoning_path=current_reasoning_path,  # current reasoning path
                         rels_ids = rels_ids,  # ids of the relations in the memory
                     )
                 else:
@@ -923,7 +923,7 @@ class T5GNNForConditionalGeneration(T5PreTrainedModel):
         >>> print(tokenizer.decode(outputs[0], skip_special_tokens=True))
         >>> # studies have shown that owning a dog is good for you.
         ```"""
-        # pdb.set_trace()
+
         use_cache = use_cache if use_cache is not None else self.config.use_cache
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
@@ -951,13 +951,14 @@ class T5GNNForConditionalGeneration(T5PreTrainedModel):
                 rels_ids=rels_ids,  # ids of the relations in the memory
             )
         elif return_dict and not isinstance(encoder_outputs, BaseModelOutput):
+            pdb.set_trace()
             encoder_outputs = BaseModelOutput(
                 last_hidden_state=encoder_outputs[0],
                 hidden_states=encoder_outputs[1] if len(encoder_outputs) > 1 else None,
                 attentions=encoder_outputs[2] if len(encoder_outputs) > 2 else None,
             )
 
-        # pdb.set_trace()
+        pdb.set_trace()
         hidden_states = encoder_outputs[0]
 
         if self.model_parallel:

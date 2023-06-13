@@ -185,7 +185,7 @@ class CustomGNNLayer(torch.nn.Module):
         Returns:
             scores (list of lists): A list of lists containing the final scores for each embedding in each group.
         """
-        pdb.set_trace()
+        #pdb.set_trace()
         # Pad the groups to make them equally sized
         max_size = max(len(group) for group in k_nodes)
         groups_padded = [F.pad(group, (0, 0, 0, max_size - len(group))) for group in k_nodes]
@@ -235,6 +235,22 @@ class CustomGNNLayer(torch.nn.Module):
                 rels_ids=None,  # ids of the relations in the memory
                 ):
         pdb.set_trace()
+        try:
+            assert hidden_states.shape[0] == 1, "The batch size must be 1"
+            assert len(hidden_states.shape) == 3, "The hidden states must be 3 dimensional"
+            assert hidden_states[gnn_mask.bool()].shape[0] > 0, "The GNN mask must be not empty"
+            assert hidden_states[rel_mask.bool()].shape[0] > 0, "The REL mask must be not empty"
+            assert memory_nodes is not None, "The memory nodes must be not None"
+        except AssertionError as e:
+            print(e)
+            print("hidden_states.shape", hidden_states.shape)
+            print("Selected hidden states by gnn", hidden_states[gnn_mask.bool()].shape)
+            print("Selected hidden states by rel", hidden_states[rel_mask.bool()].shape)
+            print("gnn_mask.shape", gnn_mask.shape)
+            print("rel_mask.shape", rel_mask.shape)
+            print("memory_nodes.shape", memory_nodes.shape)
+            print("current_reasoning_path", current_reasoning_path.get_all_reasoning_path())
+            exit()
         # I generate the probability over all the relations
         rel_prob = self.classification_head(hidden_states[rel_mask.bool()])
         # rel_prob shape (batch_size=1, n_REL_TOK, n_rels)
@@ -325,7 +341,7 @@ class CustomGNNLayer(torch.nn.Module):
         output = torch.stack(output)
         output = self.gnn_reprj(output)
         # Now I update the hidden states
-
+        pdb.set_trace()
         hidden_states[gnn_mask.bool()] = hidden_states[gnn_mask.bool()] + output
 
         return hidden_states, current_reasoning_path

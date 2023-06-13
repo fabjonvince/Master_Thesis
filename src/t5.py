@@ -235,7 +235,7 @@ class CustomGNNLayer(torch.nn.Module):
                 current_reasoning_path: AllReasoningPath = None,
                 rels_ids=None,  # ids of the relations in the memory
                 ):
-        pdb.set_trace()
+        #pdb.set_trace()
         try:
             assert hidden_states.shape[0] == 1, "The batch size must be 1"
             assert len(hidden_states.shape) == 3, "The hidden states must be 3 dimensional"
@@ -342,8 +342,11 @@ class CustomGNNLayer(torch.nn.Module):
         output = torch.stack(output)
         output = self.gnn_reprj(output)
         # Now I update the hidden states
-        pdb.set_trace()
-        hidden_states[gnn_mask.bool()] = hidden_states[gnn_mask.bool()] + output
+        #pdb.set_trace()
+        hidden_states_clone = hidden_states.clone()  # Create a clone of hidden_states
+        hidden_states_clone[gnn_mask.bool()] += output  # Perform the element-wise addition
+        hidden_states = torch.autograd.Variable(
+            hidden_states_clone)  # Assign the modified clone back to hidden_states
 
         return hidden_states, current_reasoning_path
 
@@ -484,6 +487,7 @@ class T5GNNStack(T5PreTrainedModel):
 
         self.embed_tokens = embed_tokens
         self.is_decoder = config.is_decoder
+        self.current_reasoning_path = None
 
         #self.block = nn.ModuleList(
         #    [T5Block(config, has_relative_attention_bias=bool(i == 0)) for i in range(config.num_layers)]
@@ -780,7 +784,8 @@ class T5GNNStack(T5PreTrainedModel):
 
         hidden_states = self.final_layer_norm(hidden_states)
         hidden_states = self.dropout(hidden_states)
-
+        if not self.is_decoder:
+            self.current_reasoning_path = current_reasoning_path
         # Add last layer
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
@@ -804,6 +809,11 @@ class T5GNNStack(T5PreTrainedModel):
             attentions=all_attentions,
             cross_attentions=all_cross_attentions,
         )
+
+    def get_and_clean_reasoning_path(self):
+        reasoning_path = self.current_reasoning_path
+        self.current_reasoning_path = None
+        return reasoning_path
 
 
 class T5GNNForConditionalGeneration(T5PreTrainedModel):
@@ -847,6 +857,8 @@ class T5GNNForConditionalGeneration(T5PreTrainedModel):
         self.model_parallel = False
         self.device_map = None
 
+    def get_and_clean_reasoning_path(self):
+        return self.encoder.get_and_clean_reasoning_path()
 
     def parallelize(self, device_map=None):
         self.device_map = (
@@ -995,7 +1007,6 @@ class T5GNNForConditionalGeneration(T5PreTrainedModel):
                 attention_mask = attention_mask.to(self.decoder.first_device)
             if decoder_attention_mask is not None:
                 decoder_attention_mask = decoder_attention_mask.to(self.decoder.first_device)
-
         # Decode
         decoder_outputs = self.decoder(
             input_ids=decoder_input_ids,

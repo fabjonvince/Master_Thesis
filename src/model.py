@@ -44,7 +44,10 @@ class GNNQA(pl.LightningModule):
             self.tokenizer(batch['question'], padding='max_length', truncation=True, max_length=128,
                            return_tensors='pt').to(self.device)
         input_ids, attention_mask = toks['input_ids'], toks['attention_mask']
-        labels = self.tokenizer(batch['answers']['text'], padding='max_length', truncation=True, max_length=512, return_tensors='pt')['input_ids'].to(self.device)
+        answer = batch['answers']['text']
+        if len(answer) > 1:
+            answer = [answer[0]]
+        labels = self.tokenizer(answer, padding='max_length', truncation=True, max_length=512, return_tensors='pt')['input_ids'].to(self.device)
         #labels = tensor(labels, dtype=torch.long)
         graph = batch['graph']
         rels_ids = {k: v for v, k in enumerate(self.memory_rels.keys())}
@@ -77,32 +80,23 @@ class GNNQA(pl.LightningModule):
         reasoning_path = AllReasoningPath()
         reasoning_path.set_root_nodes(keywords, 2)
 
-        '''
         predictions = self.model.generate(input_ids=input_ids, gnn_triplets=graph,
                                    gnn_mask=batch['gnn_mask'], rel_mask=batch['rel_mask'],
                                    current_reasoning_path=reasoning_path,
                                    memory_nodes=self.memory_nodes,
                                    rels_ids=rels_ids)
-        predictions = self.tokenizer.decode(predictions[0], skip_special_tokens=True)
+        predictions = [self.tokenizer.decode(predictions[0], skip_special_tokens=True)]
         targets = batch['answers']['text']
-        val_metric = get_rouge_scores(predictions, batch['title'])#targets)
-        self.val_metric.extend(val_metric['R'])
+        if len(targets) > 1:
+            targets = [targets[0]]
+        val_metric = get_rouge_scores(predictions, targets)
+        self.val_metric.append(val_metric['R'])
         return
-        
-        '''
 
-        loss = self(input_ids=input_ids, attention_mask=attention_mask, labels=labels, gnn_triplets=graph,
-                    gnn_mask=batch['gnn_mask'], rel_mask=batch['rel_mask'], current_reasoning_path=reasoning_path,
-                    memory_nodes=self.memory_nodes, rels_ids=rels_ids)[0]
-
-        return loss
-
-    '''
     def on_validation_epoch_end(self):
         self.log('val_rouge', sum(self.val_metric)/len(self.val_metric))
         self.val_metric = []
 
-    '''
 
     def configure_optimizers(self):
         #opt1 = torch.optim.SGD(self.parameters(), lr=self.model_lr)

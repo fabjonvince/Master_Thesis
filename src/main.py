@@ -173,9 +173,6 @@ def main(args):
     setattr(args, 'n_nodes', len(dataset['memory_nodes'].features))
     setattr(args, 'gnn_embs_size', args.sentence_transformer_embedding_size)
 
-    # model creation
-    model = T5GNNForConditionalGeneration.from_pretrained(args.checkpoint_summarizer, args)
-    gnnqa = GNNQA(model=model, memory_rels=dataset['memory_rels'].to_dict(), memory_nodes=dataset['memory_nodes'].to_dict(), tokenizer=tokenizer)
 
     print("In Main")
 
@@ -197,11 +194,24 @@ def main(args):
     callbacks = []
     early_stopper = EarlyStopping(monitor='val_rouge', patience=args.patience, mode='min')
     callbacks.append(early_stopper)
+    save_dir = 'checkpoints/' + run_name
+    # check the save dir not exists and create it
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+    else:
+        print('Save dir already exists, exiting...')
+        exit(1)
     if not args.dont_save:
-        md_checkpoint = ModelCheckpoint(monitor='val_rouge', save_top_k=args.save_top_k, mode='min', dirpath='checkpoints',
+        md_checkpoint = ModelCheckpoint(monitor='val_rouge', save_top_k=args.save_top_k, mode='min', dirpath=save_dir,
                                         filename='gnnqa-{epoch:02d}-{val_loss:.2f}')
         callbacks.append(md_checkpoint)
+    else:
+        save_dir = None
 
+    # model creation
+    model = T5GNNForConditionalGeneration.from_pretrained(args.checkpoint_summarizer, args)
+    gnnqa = GNNQA(model=model, memory_rels=dataset['memory_rels'].to_dict(),
+                  memory_nodes=dataset['memory_nodes'].to_dict(), tokenizer=tokenizer, save_dir=save_dir)
 
     trainer_args = {
         'max_epochs': args.max_epochs,
@@ -220,7 +230,6 @@ def main(args):
     if args.skip_test:
         return trainer.callback_metrics["val_rouge"].item() # controllare che ritorni il valore migliore
     results = trainer.test(model=gnnqa, test_dataloaders=dataset[test_name])
-
     print(results)
 
 

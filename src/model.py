@@ -125,13 +125,14 @@ class GNNQA(pl.LightningModule):
             targets = [targets[0]]
         test_metric = get_rouge_scores(predictions, targets)
         test_bs = get_bert_scores(predictions, targets)
-        for k,v in test_metric.values():
+        pdb.set_trace()
+        for k,v in test_metric.items():
             if k in self.test_metrics:
                 self.test_metrics[k].append(v)
             else:
                 self.test_metrics[k] = [v]
 
-        for k,v in test_bs.values():
+        for k,v in test_bs.items():
             if k in self.test_metrics:
                 self.test_metrics[k].append(v)
             else:

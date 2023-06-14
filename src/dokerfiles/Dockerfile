@@ -29,6 +29,7 @@ RUN pip install gdown
 RUN pip install simplejson==3.17.6
 RUN pip install codecarbon sentence_transformers
 RUN pip install wandb keybert wikidata pytorch_lightning
+RUN pip install bert_score
 COPY netrc /root/.netrc
 
 

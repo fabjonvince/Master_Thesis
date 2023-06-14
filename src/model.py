@@ -88,6 +88,7 @@ class GNNQA(pl.LightningModule):
                     gnn_mask=batch['gnn_mask'], rel_mask=batch['rel_mask'], current_reasoning_path=reasoning_path,
                     memory_nodes=self.memory_nodes, rels_ids=rels_ids)[0]
 
+        self.log('train_loss', loss.item(), on_step=True, on_epoch=True, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx):

@@ -244,6 +244,7 @@ class CustomGNNLayer(torch.nn.Module):
             assert memory_nodes is not None, "The memory nodes must be not None"
         except AssertionError as e:
             print(e)
+            pdb.set_trace()
             print("hidden_states.shape", hidden_states.shape)
             print("Selected hidden states by gnn", hidden_states[gnn_mask.bool()].shape)
             print("Selected hidden states by rel", hidden_states[rel_mask.bool()].shape)

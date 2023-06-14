@@ -167,8 +167,6 @@ def main(args):
 
     print('dataset loaded')
 
-    pdb.set_trace()
-
     setattr(args, 'n_rel', len(dataset['memory_rels'].features))
     setattr(args, 'n_nodes', len(dataset['memory_nodes'].features))
     setattr(args, 'gnn_embs_size', args.sentence_transformer_embedding_size)
@@ -225,7 +223,7 @@ def main(args):
     }
 
     trainer = Trainer(**trainer_args)
-    trainer.fit(train_dataloaders=dataset[train_name], val_dataloaders=dataset[eval_name])
+    trainer.fit(model=gnnqa, train_dataloaders=dataset[train_name], val_dataloaders=dataset[eval_name])
 
     if args.skip_test:
         return trainer.callback_metrics["val_rouge"].item() # controllare che ritorni il valore migliore

@@ -154,7 +154,7 @@ class GNNQA(pl.LightningModule):
     def test_epoch_end(self, outputs):
         for k,v in self.test_metrics.items():
             if not k in ['question', 'target_answer', 'predicted_answer', 'graph']:
-                self.log(k, sum(v)/len(v))
+                self.log(k, sum(v)/len(v), prog_bar=True)
         if not self.save_dir is None:
             table = pd.DataFrame(self.test_metrics)
             table.to_csv(self.save_dir + '/test_results.csv', index=False)

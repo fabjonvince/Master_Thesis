@@ -227,7 +227,7 @@ def main(args):
 
     if args.skip_test:
         return trainer.callback_metrics["val_rouge"].item() # controllare che ritorni il valore migliore
-    results = trainer.test(model=gnnqa, test_dataloaders=dataset[test_name])
+    results = trainer.test(dataloaders=dataset[test_name])
     print(results)
 
 

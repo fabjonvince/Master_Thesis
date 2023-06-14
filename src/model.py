@@ -9,13 +9,17 @@ from tools import AllReasoningPath, get_rouge_scores, get_bert_scores
 
 
 class GNNQA(pl.LightningModule):
-    def __init__(self, model=None, memory_rels=None, memory_nodes=None,  tokenizer=None, save_dir=None): # model_lr=None, gnn_lr=None,
+    def __init__(self, model=None, memory_rels=None, memory_nodes=None, tokenizer=None, save_dir=None, model_lr=None, gnn_lr=None,
+                 gnn_layers=None):
         super().__init__()
+        if gnn_layers is None:
+            gnn_layers = []
+        self.gnn_layers = None
         self.model = model
         self.memory_rels = memory_rels
         self.memory_nodes = memory_nodes
-        #self.model_lr = model_lr
-        #self.gnn_lr = gnn_lr
+        self.model_lr = model_lr
+        self.gnn_lr = gnn_lr
         self.tokenizer = tokenizer
         self.val_metric = []
         self.test_metrics = {}
@@ -149,7 +153,7 @@ class GNNQA(pl.LightningModule):
         self.test_metrics['predicted_answer'].append(predictions[0])
         if not 'graph' in self.test_metrics:
             self.test_metrics['graph'] = []
-        self.test_metrics['graph'].append(self.model.encoder.get_and_clean_reasoning_path())
+        self.test_metrics['graph'].append(self.model.encoder.get_and_clean_reasoning_path().get_all_reasoning_path())
         return
 
     def on_test_epoch_end(self):
@@ -168,9 +172,20 @@ class GNNQA(pl.LightningModule):
 
 
     def configure_optimizers(self):
-        #opt1 = torch.optim.SGD(self.parameters(), lr=self.model_lr)
-        #opt2 = torch.optim.SGD(self.parameters(), lr=self.model_lr)
-        return torch.optim.SGD(self.parameters(), lr=0.00001)
+        if self.gnn_lr:
+            gnn_parameters = []
+            model_parameters = []
+            layers = ['encoder.block.{}'.format(i) for i in self.gnn_layers]
+            for k,v in self.model.named_parameters():
+                if any(x in k for x in layers):
+                    print('GNN Layer added to second optimizer', k, v.shape)
+                    gnn_parameters.append(v)
+                else:
+                    model_parameters.append(v)
+            opt1 = torch.optim.AdamW(gnn_parameters, lr=self.gnn_lr)
+            opt2 = torch.optim.AdamW(model_parameters, lr=self.model_lr)
+            return [opt1, opt2]
+        return torch.optim.SGD(self.parameters(), lr=self.model_lr)
 
 
 

@@ -47,6 +47,8 @@ argparser.add_argument('--no_wandb', default=False, action='store_true', help='d
 argparser.add_argument('--no_gnn', default=False, action='store_true', help='do not use gnn')
 argparser.add_argument('--optuna_pruner_callback', default=None, help='optuna pruner callback')
 argparser.add_argument('--skip_test', default=False, action='store_true', help='skip test')
+argparser.add_argument('--model_lr', default=0.000001, type=float, help='model learning rate')
+argparser.add_argument('--gnn_lr', default=None, type=float, help='gnn learning rate')
 name_mapping = {
 "eli5": ("train_eli5", "validation_eli5", "test_eli5", "title", "answers"),
 "conceptnet": ("rel", "arg1", "arg2"),
@@ -209,7 +211,8 @@ def main(args):
     # model creation
     model = T5GNNForConditionalGeneration.from_pretrained(args.checkpoint_summarizer, args)
     gnnqa = GNNQA(model=model, memory_rels=dataset['memory_rels'].to_dict(),
-                  memory_nodes=dataset['memory_nodes'].to_dict(), tokenizer=tokenizer, save_dir=save_dir)
+                  memory_nodes=dataset['memory_nodes'].to_dict(), tokenizer=tokenizer, save_dir=save_dir,
+                  model_lr=args.model_lr, gnn_lr=args.gnn_lr, gnn_layers=args.layer_with_gnn)
 
     trainer_args = {
         'max_epochs': args.max_epochs,

@@ -48,7 +48,7 @@ class GNNQA(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         #pdb.set_trace()
         toks = \
-            self.tokenizer(batch['question'], padding='max_length', truncation=True, max_length=128,
+            self.tokenizer(batch['T5_question'], padding='max_length', truncation=True, max_length=128,
                            return_tensors='pt').to(self.device)
         input_ids, attention_mask = toks['input_ids'], toks['attention_mask']
         answer = batch['answers']['text']
@@ -72,7 +72,7 @@ class GNNQA(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         toks = \
-        self.tokenizer(batch['question'], padding='max_length', truncation=True, max_length=128, return_tensors='pt').to(self.device)
+        self.tokenizer(batch['T5_question'], padding='max_length', truncation=True, max_length=128, return_tensors='pt').to(self.device)
         input_ids, attention_mask = toks['input_ids'], toks['attention_mask']
         # attention_mask = tensor(attention_mask, dtype=torch.int)
         labels = self.tokenizer(batch['answers']['text'], padding='max_length', truncation=True, max_length=512,
@@ -102,7 +102,7 @@ class GNNQA(pl.LightningModule):
 
     def test_step(self, batch, batch_idx):
         toks = \
-            self.tokenizer(batch['question'], padding='max_length', truncation=True, max_length=128,
+            self.tokenizer(batch['T5_question'], padding='max_length', truncation=True, max_length=128,
                            return_tensors='pt').to(self.device)
         input_ids, attention_mask = toks['input_ids'], toks['attention_mask']
         # attention_mask = tensor(attention_mask, dtype=torch.int)
@@ -175,7 +175,7 @@ class GNNQA(pl.LightningModule):
         if self.gnn_lr:
             gnn_parameters = []
             model_parameters = []
-            layers = ['encoder.block.{}'.format(i) for i in self.gnn_layers]
+            layers = ['encoder.block.{}.'.format(i) for i in self.gnn_layers]
             for k,v in self.model.named_parameters():
                 if any(x in k for x in layers):
                     print('GNN Layer added to second optimizer', k, v.shape)

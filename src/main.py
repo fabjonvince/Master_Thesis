@@ -214,6 +214,10 @@ def main(args):
                   memory_nodes=dataset['memory_nodes'].to_dict(), tokenizer=tokenizer, save_dir=save_dir,
                   model_lr=args.model_lr, gnn_lr=args.gnn_lr, gnn_layers=args.layer_with_gnn)
 
+    dataset['train'] = dataset['train'].map(lambda example: {'T5_question': 'question: ' + example['question']})
+    dataset['test'] = dataset['test'].map(lambda example: {'T5_question': 'question: ' + example['question']})
+    dataset['validation'] = dataset['validation'].map(lambda example: {'T5_question': 'question: ' + example['question']})
+
     trainer_args = {
         'max_epochs': args.max_epochs,
         #'accelerator': 'gpu',

@@ -17,7 +17,8 @@ from t5 import T5GNNForConditionalGeneration
 from pytorch_lightning import Trainer
 from sentence_transformers import SentenceTransformer
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
-from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
+
 from pytorch_lightning.loggers import WandbLogger
 
 
@@ -53,6 +54,8 @@ name_mapping = {
 "eli5": ("train_eli5", "validation_eli5", "test_eli5", "title", "answers"),
 "conceptnet": ("rel", "arg1", "arg2"),
 }
+
+
 
 
 
@@ -194,10 +197,12 @@ def main(args):
     callbacks = []
     early_stopper = EarlyStopping(monitor='val_rouge', patience=args.patience, mode='min')
     callbacks.append(early_stopper)
+    callbacks.append(LearningRateMonitor(logging_interval='epoch'))
     save_dir = 'checkpoints/' + run_name
     # check the save dir not exists and create it
     if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
+        if not args.dont_save:
+            os.makedirs(save_dir)
     else:
         print('Save dir already exists, exiting...')
         exit(1)
@@ -227,6 +232,7 @@ def main(args):
         'enable_checkpointing': not args.dont_save,
         'log_every_n_steps': 1,
         'logger': logger if not args.no_wandb else True,
+        'check_val_every_n_epoch': 1,
     }
 
     trainer = Trainer(**trainer_args)
@@ -234,7 +240,7 @@ def main(args):
 
     if args.skip_test:
         return trainer.callback_metrics["val_rouge"].item() # controllare che ritorni il valore migliore
-    results = trainer.test(dataloaders=dataset[test_name])
+    results = trainer.test(dataloaders=dataset[test_name], ckpt_path='last' if args.dont_save else 'best')
     print(results)
 
 

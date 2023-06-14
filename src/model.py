@@ -151,7 +151,7 @@ class GNNQA(pl.LightningModule):
         self.test_metrics['graph'].append(self.model.encoder.get_and_clean_reasoning_path())
         return
 
-    def test_epoch_end(self, outputs):
+    def on_test_epoch_end(self):
         for k,v in self.test_metrics.items():
             if not k in ['question', 'target_answer', 'predicted_answer', 'graph']:
                 self.log(k, sum(v)/len(v), prog_bar=True)

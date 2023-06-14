@@ -14,7 +14,7 @@ class GNNQA(pl.LightningModule):
         super().__init__()
         if gnn_layers is None:
             gnn_layers = []
-        self.gnn_layers = None
+        self.gnn_layers = gnn_layers
         self.model = model
         self.memory_rels = memory_rels
         self.memory_nodes = memory_nodes
@@ -129,7 +129,6 @@ class GNNQA(pl.LightningModule):
             targets = [targets[0]]
         test_metric = get_rouge_scores(predictions, targets)
         test_bs = get_bert_scores(predictions, targets)
-        pdb.set_trace()
         for k,v in test_metric.items():
             if k in self.test_metrics:
                 self.test_metrics[k].append(v)
@@ -172,6 +171,7 @@ class GNNQA(pl.LightningModule):
 
 
     def configure_optimizers(self):
+        pdb.set_trace()
         if self.gnn_lr:
             gnn_parameters = []
             model_parameters = []
@@ -182,10 +182,15 @@ class GNNQA(pl.LightningModule):
                     gnn_parameters.append(v)
                 else:
                     model_parameters.append(v)
-            opt1 = torch.optim.AdamW(gnn_parameters, lr=self.gnn_lr)
-            opt2 = torch.optim.AdamW(model_parameters, lr=self.model_lr)
-            return [opt1, opt2]
-        return torch.optim.SGD(self.parameters(), lr=self.model_lr)
+            opt = torch.optim.AdamW([{
+                'params': model_parameters,
+                'lr': self.model_lr
+            }, {
+                'params': gnn_parameters,
+                'lr': self.gnn_lr,
+            }])
+            return opt
+        return torch.optim.AdamW(self.parameters(), lr=self.model_lr)
 
 
 

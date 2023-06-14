@@ -215,11 +215,11 @@ def main(args):
     }
 
     trainer = Trainer(**trainer_args)
-    trainer.fit(model=gnnqa, train_dataloaders=dataset[train_name], val_dataloaders=dataset[eval_name])
+    trainer.fit(train_dataloaders=dataset[train_name], val_dataloaders=dataset[eval_name])
 
     if args.skip_test:
         return trainer.callback_metrics["val_rouge"].item() # controllare che ritorni il valore migliore
-    results = trainer.predict(model=gnnqa, test_dataloaders=dataset[test_name])
+    results = trainer.test(model=gnnqa, test_dataloaders=dataset[test_name])
 
     print(results)
 

@@ -39,7 +39,7 @@ class GNNQA(pl.LightningModule):
         return output.loss, output.logits
 
     def training_step(self, batch, batch_idx):
-        pdb.set_trace()
+        #pdb.set_trace()
         toks = \
             self.tokenizer(batch['question'], padding='max_length', truncation=True, max_length=128,
                            return_tensors='pt').to(self.device)
@@ -96,6 +96,7 @@ class GNNQA(pl.LightningModule):
     def on_validation_epoch_end(self):
         self.log('val_rouge', sum(self.val_metric)/len(self.val_metric))
         self.val_metric = []
+
 
 
     def configure_optimizers(self):

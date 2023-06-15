@@ -48,6 +48,7 @@ argparser.add_argument('--no_wandb', default=False, action='store_true', help='d
 argparser.add_argument('--no_gnn', default=False, action='store_true', help='do not use gnn')
 argparser.add_argument('--optuna_pruner_callback', default=None, help='optuna pruner callback')
 argparser.add_argument('--skip_test', default=False, action='store_true', help='skip test')
+argparser.add_argument('--skip_train', default=False, action='store_true', help='skip train')
 argparser.add_argument('--model_lr', default=0.000001, type=float, help='model learning rate')
 argparser.add_argument('--gnn_lr', default=None, type=float, help='gnn learning rate')
 name_mapping = {
@@ -80,14 +81,27 @@ def main(args):
 
     else:
 
+        save_dir = f'dataset/eli5_{args.train_samples}_{args.val_samples}_{args.test_samples}_conceptnet'
         dataset = get_dataset(args.dataset)
 
         # dataset sampling
+        print(f"Sampling dataset to {args.train_samples} train, {args.val_samples} val, {args.test_samples} test samples")
         dataset[train_name] = dataset[train_name].shuffle(seed=42).select(range(args.train_samples))
         dataset[eval_name] = dataset[eval_name].shuffle(seed=42).select(range(args.val_samples))
         dataset[test_name] = dataset[test_name].shuffle(seed=42).select(range(args.test_samples))
+        print(f"Dataset sampling done, the shapes are {len(dataset[train_name])}, {len(dataset[eval_name])}, {len(dataset[test_name])}")
 
+        # Now add a row_id to each sample
+        print("Adding row_id to each sample")
+        dataset[train_name] = dataset[train_name].map(lambda example, idx: {'row_id': idx}, with_indices=True)
+        dataset[eval_name] = dataset[eval_name].map(lambda example, idx: {'row_id': idx}, with_indices=True)
+        dataset[test_name] = dataset[test_name].map(lambda example, idx: {'row_id': idx}, with_indices=True)
+        print("Adding row_id done")
 
+        nodes = set()
+        rels = set()
+
+        # Now add a row_id to each sample
         dataset[train_name] = dataset[train_name].map(
             lambda example: {'keywords': text_to_keywords(example[question_name])})
 
@@ -101,7 +115,7 @@ def main(args):
             #lambda example: {'answer_tok': tokenizer(example[answers_name]['text'], padding='max_length', truncation=True, max_length=512, return_tensors='pt')})
 
         dataset[train_name] = dataset[train_name].map(
-            lambda example: {'graph': text_to_graph_concept(args.graph_depth, example['keywords'])})
+            lambda example: {'graph': text_to_graph_concept(args.graph_depth, example['keywords'], save_dir, example['row_id'], nodes, rels)})
 
         #dataset[train_name] = dataset[train_name].map(
         #    lambda example: graph_to_nodes_and_rel(example['graph']))
@@ -122,7 +136,7 @@ def main(args):
             #lambda example: {'answer_tok': tokenizer(example[answers_name]['text'], padding='max_length', truncation=True, max_length=512, return_tensors='pt')})
 
         dataset[eval_name] = dataset[eval_name].map(
-            lambda example: {'graph': text_to_graph_concept(args.graph_depth, example['keywords'])})
+            lambda example: {'graph': text_to_graph_concept(args.graph_depth, example['keywords'], save_dir, example['row_id'], nodes, rels)})
 
         #dataset[eval_name] = dataset[eval_name].map(
         #    lambda example: graph_to_nodes_and_rel(example['graph']))
@@ -135,7 +149,6 @@ def main(args):
 
         dataset[test_name] = dataset[test_name].map(
             lambda example: {'question': add_special_tokens(example[question_name], example['keywords'])})
-
         #dataset[test_name] = dataset[test_name].map(
             #lambda example: tokenizer(example['question'], padding='max_length', truncation=True, max_length=args.max_length, return_tensors='pt'))
 
@@ -143,19 +156,12 @@ def main(args):
             #lambda example: {'answer_tok': tokenizer(example[answers_name]['text'], padding='max_length', truncation=True, max_length=512, return_tensors='pt')})
 
         dataset[test_name] = dataset[test_name].map(
-            lambda example: {'graph': text_to_graph_concept(args.graph_depth, example['keywords'])})
+            lambda example: {'graph': text_to_graph_concept(args.graph_depth, example['keywords'], save_dir, example['row_id'], nodes, rels)})
 
         #dataset[test_name] = dataset[test_name].map(
         #    lambda example: graph_to_nodes_and_rel(example['graph']))
-
-        nodes = np.unique([s for d in dataset[train_name]['graph'] for s, _, s in d] + \
-                          [s for d in dataset[eval_name]['graph'] for s, _, s in d] + \
-                          [s for d in dataset[test_name]['graph'] for s, _, s in d])
-
-        rels = np.unique([k for d in dataset[train_name]['graph'] for _, k, _ in d] + \
-                         [k for d in dataset[eval_name]['graph'] for _, k, _ in d] + \
-                         [k for d in dataset[test_name]['graph'] for _, k, _ in d])
-
+        print('The number of nodes is:  ', len(nodes))
+        print('The number of relations is:  ', len(rels))
 
         # Load a pretrained model with all-MiniLM-L12-v2 checkpoint
         st_model = SentenceTransformer('all-MiniLM-L12-v2') if device == 'cpu' else SentenceTransformer('all-MiniLM-L12-v2').cuda()
@@ -167,76 +173,87 @@ def main(args):
         dataset['memory_nodes'] = Dataset.from_pandas(pd.DataFrame(data=memory_nodes))
         dataset['memory_rels'] = Dataset.from_pandas(pd.DataFrame(data=memory_rels))
 
-        dataset.save_to_disk(f'dataset/eli5_{args.train_samples}_{args.val_samples}_{args.test_samples}_conceptnet')
+        print('dropping empty graphs')
+        dataset[train_name] = dataset[train_name].filter(lambda row: row['rel_mask'].sum() > 0)
+        dataset[test_name] = dataset[test_name].map(lambda row: row['rel_mask'].sum() > 0)
+        dataset[eval_name] = dataset[eval_name].map(lambda row: row['rel_mask'].sum() > 0)
+        print('Now the lengths of the datasets are as follows:')
+        print(len(dataset[train_name]))
+        print(len(dataset[test_name]))
+        print(len(dataset[eval_name]))
+
+
+
+        dataset.save_to_disk()
     # print(dataset['memory_rels'])
 
-    print('dataset loaded')
+    if not args.skip_train:
+        print('dataset loaded')
 
-    setattr(args, 'n_rel', len(dataset['memory_rels'].features))
-    setattr(args, 'n_nodes', len(dataset['memory_nodes'].features))
-    setattr(args, 'gnn_embs_size', args.sentence_transformer_embedding_size)
+        setattr(args, 'n_rel', len(dataset['memory_rels'].features))
+        setattr(args, 'n_nodes', len(dataset['memory_nodes'].features))
+        setattr(args, 'gnn_embs_size', args.sentence_transformer_embedding_size)
 
 
-    print("In Main")
+        print("In Main")
 
-    # Next I take the date in gg_mm_yyyy format
-    date_ = datetime.now().strftime("%d_%m_%Y")
-    run_name = date_
-    if not args.no_gnn:
-        run_name += '_gnn'
-    run_name += '_' + str(args.checkpoint_summarizer)
-    if args.run_info:
-        run_name += '_' + args.run_info
+        # Next I take the date in gg_mm_yyyy format
+        date_ = datetime.now().strftime("%d_%m_%Y")
+        run_name = date_
+        if not args.no_gnn:
+            run_name += '_gnn'
+        run_name += '_' + str(args.checkpoint_summarizer)
+        if args.run_info:
+            run_name += '_' + args.run_info
 
-    if not args.no_wandb:
-        logger = WandbLogger(
-            name=run_name,
-            project=args.wandb_project,
-        )
+        if not args.no_wandb:
+            logger = WandbLogger(
+                name=run_name,
+                project=args.wandb_project,
+            )
 
-    callbacks = []
-    early_stopper = EarlyStopping(monitor='val_rouge', patience=args.patience, mode='min')
-    callbacks.append(early_stopper)
-    callbacks.append(LearningRateMonitor(logging_interval='epoch'))
-    save_dir = 'checkpoints/' + run_name
-    # check the save dir not exists and create it
-    if not os.path.exists(save_dir):
+        callbacks = []
+        early_stopper = EarlyStopping(monitor='val_rouge', patience=args.patience, mode='min')
+        callbacks.append(early_stopper)
+        callbacks.append(LearningRateMonitor(logging_interval='epoch'))
+        save_dir = 'checkpoints/' + run_name
+        # check the save dir not exists and create it
+        if not os.path.exists(save_dir):
+            if not args.dont_save:
+                os.makedirs(save_dir)
+        else:
+            print('Save dir already exists, exiting...')
+            exit(1)
         if not args.dont_save:
-            os.makedirs(save_dir)
-    else:
-        print('Save dir already exists, exiting...')
-        exit(1)
-    if not args.dont_save:
-        md_checkpoint = ModelCheckpoint(monitor='val_rouge', save_top_k=args.save_top_k, mode='min', dirpath=save_dir,
-                                        filename='gnnqa-{epoch:02d}-{val_loss:.2f}')
-        callbacks.append(md_checkpoint)
-    else:
-        save_dir = None
+            md_checkpoint = ModelCheckpoint(monitor='val_rouge', save_top_k=args.save_top_k, mode='min', dirpath=save_dir,
+                                            filename='gnnqa-{epoch:02d}-{val_loss:.2f}')
+            callbacks.append(md_checkpoint)
+        else:
+            save_dir = None
 
-    # model creation
-    model = T5GNNForConditionalGeneration.from_pretrained(args.checkpoint_summarizer, args)
-    gnnqa = GNNQA(model=model, memory_rels=dataset['memory_rels'].to_dict(),
-                  memory_nodes=dataset['memory_nodes'].to_dict(), tokenizer=tokenizer, save_dir=save_dir,
-                  model_lr=args.model_lr, gnn_lr=args.gnn_lr, gnn_layers=args.layer_with_gnn)
+        # model creation
+        model = T5GNNForConditionalGeneration.from_pretrained(args.checkpoint_summarizer, args)
+        gnnqa = GNNQA(model=model, memory_rels=dataset['memory_rels'].to_dict(),
+                      memory_nodes=dataset['memory_nodes'].to_dict(), tokenizer=tokenizer, save_dir=save_dir,
+                      model_lr=args.model_lr, gnn_lr=args.gnn_lr, gnn_layers=args.layer_with_gnn)
 
-    dataset[train_name] = dataset[train_name].map(lambda example: {'T5_question': 'question: ' + example['question']})
-    dataset[test_name] = dataset[test_name].map(lambda example: {'T5_question': 'question: ' + example['question']})
-    dataset[eval_name] = dataset[eval_name].map(lambda example: {'T5_question': 'question: ' + example['question']})
+        dataset[train_name] = dataset[train_name].map(lambda example: {'T5_question': 'question: ' + example['question']})
+        dataset[test_name] = dataset[test_name].map(lambda example: {'T5_question': 'question: ' + example['question']})
+        dataset[eval_name] = dataset[eval_name].map(lambda example: {'T5_question': 'question: ' + example['question']})
 
-    trainer_args = {
-        'max_epochs': args.max_epochs,
-        #'accelerator': 'gpu',
-        'devices':1,
-        'accumulate_grad_batches': args.accumulate_grad_batches,
-        'callbacks': callbacks,
-        'enable_checkpointing': not args.dont_save,
-        'log_every_n_steps': 1,
-        'logger': logger if not args.no_wandb else True,
-        'check_val_every_n_epoch': 1,
-    }
+        trainer_args = {
+            'max_epochs': args.max_epochs,
+            'devices':1,
+            'accumulate_grad_batches': args.accumulate_grad_batches,
+            'callbacks': callbacks,
+            'enable_checkpointing': not args.dont_save,
+            'log_every_n_steps': 1,
+            'logger': logger if not args.no_wandb else True,
+            'check_val_every_n_epoch': 1,
+        }
 
-    trainer = Trainer(**trainer_args)
-    trainer.fit(model=gnnqa, train_dataloaders=dataset[train_name], val_dataloaders=dataset[eval_name])
+        trainer = Trainer(**trainer_args)
+        trainer.fit(model=gnnqa, train_dataloaders=dataset[train_name], val_dataloaders=dataset[eval_name])
 
     if args.skip_test:
         return trainer.callback_metrics["val_rouge"].item() # controllare che ritorni il valore migliore

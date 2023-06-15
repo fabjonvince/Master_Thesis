@@ -3,15 +3,15 @@ import re
 import time
 
 import numpy as np
+import os
 from keybert import KeyBERT
 
 from data import get_dataset
 
 
 def text_to_keywords(
-        text, #domanda
-        ):
-
+        text,  # domanda
+):
     kw_model = KeyBERT()
     kw = kw_model.extract_keywords(text)
     txt = [kw[i][0].lower() for i in range(len(kw))]
@@ -20,12 +20,10 @@ def text_to_keywords(
     return txt
 
 
-
 def add_special_tokens(
-        question, #domanda
-        kw, #keywords
-        ):
-
+        question,  # domanda
+        kw,  # keywords
+):
     new_question = question
     for word in kw:
         idx = re.search(r"\b({})\b".format(word), new_question, re.IGNORECASE).start()
@@ -34,11 +32,14 @@ def add_special_tokens(
     return new_question
 
 
-
 def text_to_graph_concept(
-        N, #numero di salti
-        kw, #domanda
-        ):
+        N,  # numero di salti
+        kw,  # domanda
+        save_dir,
+        row_id,
+        nodes_list,
+        rels_list
+):
     obj = 'arg2'
 
     graph = get_dataset('conceptnet')
@@ -50,10 +51,10 @@ def text_to_graph_concept(
 
     for i in range(N):
         kw = [k for k in (set(kw) & set(graph.index))]
-        #filtered = graph.loc[kw, [subj, rel, obj]] #
+        # filtered = graph.loc[kw, [subj, rel, obj]] #
         filtered = graph.loc[kw]
-        #triplets = filtered.to_numpy()
-        #triplets = [(item[0], item[1], item[2]) for item in triplets] #
+        # triplets = filtered.to_numpy()
+        # triplets = [(item[0], item[1], item[2]) for item in triplets] #
         triplets = [(row.Index, row.rel, row.arg2) for row in filtered.itertuples(index=True)]
         triplets = np.unique(triplets, axis=0)
         triplets_list.extend([triplet for triplet in triplets])
@@ -64,7 +65,19 @@ def text_to_graph_concept(
 
     triplets_list.extend([(entity, 'self', entity) for entity in entities_list])
 
-    return triplets_list
+    # Now save the triplets_list into the directory save_dir with the name row_id.graph
+    # check if save_dir exists
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+    # check if save_dir ends with '/'
+    if save_dir[-1] != '/':
+        save_dir += '/'
+    np.save(save_dir + str(row_id) + '.graph', triplets_list)
+    for s,r,e in triplets_list:
+        nodes_list.add(s)
+        nodes_list.add(e)
+        rels_list.add(r)
+    return save_dir + str(row_id) + '.graph'
 
 
 def print_triplets(triplets):
@@ -73,7 +86,6 @@ def print_triplets(triplets):
 
 
 def graph_to_nodes_and_rel(triplets):
-
     edges = {}
     relations = {}
 
@@ -104,9 +116,3 @@ def create_memory(model, sentences, args):
     embeddings = {k: v for k, v in zip(sentences, embs)}
 
     return embeddings
-
-
-
-
-
-

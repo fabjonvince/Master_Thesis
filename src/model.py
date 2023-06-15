@@ -1,5 +1,6 @@
 import pdb
 
+import numpy as np
 import pandas as pd
 import pytorch_lightning as pl
 import torch
@@ -77,6 +78,7 @@ class GNNQA(pl.LightningModule):
         labels = self.tokenizer(answer, padding='max_length', truncation=True, max_length=512, return_tensors='pt')['input_ids'].to(self.device)
         #labels = tensor(labels, dtype=torch.long)
         graph = batch['graph']
+        graph = np.load(graph)
         rels_ids = {k: v for v, k in enumerate(self.memory_rels.keys())}
         batch['rel_mask'] = (input_ids == 32100).int()
         batch['gnn_mask'] = (input_ids == 32101).int()

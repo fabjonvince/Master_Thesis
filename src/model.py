@@ -6,6 +6,7 @@ import pytorch_lightning as pl
 import torch
 from torch import tensor
 
+from preprocess import load_with_pickle, from_triplets_of_ids_to_triplets_of_string
 from tools import AllReasoningPath, get_rouge_scores, get_bert_scores
 
 
@@ -30,7 +31,14 @@ gen_test_params = {
 }
 
 class GNNQA(pl.LightningModule):
-    def __init__(self, model=None, memory_rels=None, memory_nodes=None, tokenizer=None, save_dir=None, model_lr=None, gnn_lr=None,
+    def __init__(self, model=None,
+                 memory_rels:pd.DataFrame=None,
+                 memory_nodes:pd.DataFrame=None,
+                 node_embs=None,
+                 tokenizer=None,
+                 save_dir=None,
+                 model_lr=None,
+                 gnn_lr=None,
                  gnn_layers=None):
         super().__init__()
         if gnn_layers is None:
@@ -39,6 +47,11 @@ class GNNQA(pl.LightningModule):
         self.model = model
         self.memory_rels = memory_rels
         self.memory_nodes = memory_nodes
+        self.memory_rels.set_index('custom_index', inplace=True)
+        self.memory_nodes.set_index('custom_index', inplace=True)
+        self.nodes_dict = self.memory_nodes['custom_value'].to_dict()
+        self.rels_dict = self.memory_rels['custom_value'].to_dict()
+        self.memory_embs = node_embs
         self.model_lr = model_lr
         self.gnn_lr = gnn_lr
         self.tokenizer = tokenizer
@@ -66,8 +79,7 @@ class GNNQA(pl.LightningModule):
 
         return output.loss, output.logits
 
-    def training_step(self, batch, batch_idx):
-        #pdb.set_trace()
+    def prepare_data_from_batch(self, batch):
         toks = \
             self.tokenizer(batch['T5_question'], padding='max_length', truncation=True, max_length=128,
                            return_tensors='pt').to(self.device)
@@ -75,16 +87,24 @@ class GNNQA(pl.LightningModule):
         answer = batch['answers']['text']
         if len(answer) > 1:
             answer = [answer[0]]
-        labels = self.tokenizer(answer, padding='max_length', truncation=True, max_length=512, return_tensors='pt')['input_ids'].to(self.device)
-        #labels = tensor(labels, dtype=torch.long)
-        graph = batch['graph']
-        graph = np.load(graph)
-        rels_ids = {k: v for v, k in enumerate(self.memory_rels.keys())}
+        labels = self.tokenizer(answer, padding='max_length', truncation=True, max_length=512, return_tensors='pt')[
+            'input_ids'].to(self.device)
+        # labels = tensor(labels, dtype=torch.long)
+        graph = batch['graph'] # the graph contain the path to the file containing the graph
+        graph = np.load(graph) # the graph contains triplets of int that are indices of nodes and rels
+        pdb.set_trace()
+        graph = from_triplets_of_ids_to_triplets_of_string(graph, self.nodes_dict, self.rels_dict)
+        rels_ids = self.memory_rels.Index
         batch['rel_mask'] = (input_ids == 32100).int()
         batch['gnn_mask'] = (input_ids == 32101).int()
         keywords = batch['keywords']
         reasoning_path = AllReasoningPath()
         reasoning_path.set_root_nodes(keywords, 2)
+        return batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids
+
+    def training_step(self, batch, batch_idx):
+        #pdb.set_trace()
+        batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids = self.prepare_data_from_batch(batch)
 
         loss = self(input_ids=input_ids, attention_mask=attention_mask, labels=labels, gnn_triplets=graph,
                     gnn_mask=batch['gnn_mask'], rel_mask=batch['rel_mask'], current_reasoning_path=reasoning_path,
@@ -94,21 +114,7 @@ class GNNQA(pl.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        toks = \
-        self.tokenizer(batch['T5_question'], padding='max_length', truncation=True, max_length=128, return_tensors='pt').to(self.device)
-        input_ids, attention_mask = toks['input_ids'], toks['attention_mask']
-        # attention_mask = tensor(attention_mask, dtype=torch.int)
-        labels = self.tokenizer(batch['answers']['text'], padding='max_length', truncation=True, max_length=512,
-                                return_tensors='pt')['input_ids'].to(self.device)
-        # labels = tensor(labels, dtype=torch.long)
-        graph = batch['graph']
-
-        rels_ids = {k: v for v, k in enumerate(self.memory_rels.keys())}
-        batch['rel_mask'] = (input_ids == 32100).int()
-        batch['gnn_mask'] = (input_ids == 32101).int()
-        keywords = batch['keywords']
-        reasoning_path = AllReasoningPath()
-        reasoning_path.set_root_nodes(keywords, 2)
+        batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids = self.prepare_data_from_batch(batch)
 
         predictions = self.model.generate(input_ids=input_ids, gnn_triplets=graph,
                                    gnn_mask=batch['gnn_mask'], rel_mask=batch['rel_mask'],
@@ -124,22 +130,7 @@ class GNNQA(pl.LightningModule):
         return
 
     def test_step(self, batch, batch_idx):
-        toks = \
-            self.tokenizer(batch['T5_question'], padding='max_length', truncation=True, max_length=128,
-                           return_tensors='pt').to(self.device)
-        input_ids, attention_mask = toks['input_ids'], toks['attention_mask']
-        # attention_mask = tensor(attention_mask, dtype=torch.int)
-        labels = self.tokenizer(batch['answers']['text'], padding='max_length', truncation=True, max_length=512,
-                                return_tensors='pt')['input_ids'].to(self.device)
-        # labels = tensor(labels, dtype=torch.long)
-        graph = batch['graph']
-
-        rels_ids = {k: v for v, k in enumerate(self.memory_rels.keys())}
-        batch['rel_mask'] = (input_ids == 32100).int()
-        batch['gnn_mask'] = (input_ids == 32101).int()
-        keywords = batch['keywords']
-        reasoning_path = AllReasoningPath()
-        reasoning_path.set_root_nodes(keywords, 2)
+        batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids = self.prepare_data_from_batch(batch)
 
         predictions = self.model.generate(input_ids=input_ids, gnn_triplets=graph,
                                           gnn_mask=batch['gnn_mask'], rel_mask=batch['rel_mask'],

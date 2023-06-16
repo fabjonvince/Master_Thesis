@@ -1,9 +1,11 @@
 import pdb
 import re
-import time
+import pickle
 
 import numpy as np
 import os
+
+import pandas as pd
 from keybert import KeyBERT
 
 from data import get_dataset
@@ -32,6 +34,25 @@ def add_special_tokens(
     return new_question
 
 
+def get_node_and_rel_dict():
+    graph = get_dataset('conceptnet')
+    graph = graph['train']
+    graph = graph.to_pandas()
+    nodes = list(graph['arg1'].unique())
+    rels = list(graph['rel'].unique())
+    rels.append('self')
+    nodes.extend(list(graph['arg2'].unique()))
+    nodes = list(set(nodes))
+    node_index = np.arange(len(nodes), dtype=np.uint32)
+    rel_index = np.arange(len(rels), dtype=np.uint32)
+    rels_dict = [{'custom_index': i, 'custom_value': v} for i, v in zip(rel_index, rels)]
+    nodes_dict = [{'custom_index': i, 'custom_value': v} for i, v in zip(node_index, nodes)]
+
+    return pd.DataFrame(data=nodes_dict), pd.DataFrame(data=rels_dict)
+
+
+
+
 def serialize(triplets):
     div = '<[^_^]>'
     ser = [s + div + r + div + e for s, r, e in triplets]
@@ -43,8 +64,20 @@ def deserialize(texts):
     deser = [(s, r, e) for text in texts for s, r, e in text.split(div)]
     return deser
 
-def serialize_with_pickle(triplets):
 
+def save_with_pickle(dir_to_save, triplets):
+    with open(dir_to_save, 'w') as fp:
+        pickle.dump(triplets, fp)
+
+
+def load_with_pickle(dir_to_load):
+    with open(dir_to_load, "r") as fp:
+        data = pickle.load(fp)
+    return data
+
+def from_triplets_of_ids_to_triplets_of_string(triplets, node_dict, rel_dict):
+    str_trips = [(node_dict[s], rel_dict[r], node_dict[e]) for s,r,e in triplets]
+    return str_trips
 
 
 def text_to_graph_concept(
@@ -52,11 +85,10 @@ def text_to_graph_concept(
         kw,  # domanda
         save_dir,
         row_id,
-        nodes_list,
-        rels_list
+        nodes_dict,
+        rels_dict,
 ):
     obj = 'arg2'
-
     graph = get_dataset('conceptnet')
     graph = graph['train']
     graph = graph.to_pandas()
@@ -64,21 +96,21 @@ def text_to_graph_concept(
     triplets_list = []
     entities_list = kw
 
+
     for i in range(N):
         kw = [k for k in (set(kw) & set(graph.index))]
         # filtered = graph.loc[kw, [subj, rel, obj]] #
         filtered = graph.loc[kw]
         # triplets = filtered.to_numpy()
         # triplets = [(item[0], item[1], item[2]) for item in triplets] #
-        triplets = [(row.Index, row.rel, row.arg2) for row in filtered.itertuples(index=True)]
+        triplets = [(nodes_dict[row.Index], rels_dict[row.rel], nodes_dict[row.arg2]) for row in filtered.itertuples(index=True)]
         triplets = np.unique(triplets, axis=0)
         triplets_list.extend([triplet for triplet in triplets])
 
         kw = filtered.loc[~filtered[obj].isin(entities_list)][obj].drop_duplicates().to_numpy()
 
         entities_list = np.hstack((entities_list, kw))
-
-    triplets_list.extend([(entity, 'self', entity) for entity in entities_list])
+    triplets_list.extend([(nodes_dict[entity], rels_dict['self'], nodes_dict[entity]) for entity in entities_list if entity in nodes_dict])
 
     # Now save the triplets_list into the directory save_dir with the name row_id.graph
     # check if save_dir exists
@@ -87,11 +119,7 @@ def text_to_graph_concept(
     # check if save_dir ends with '/'
     if save_dir[-1] != '/':
         save_dir += '/'
-    np.save(save_dir + str(row_id) + '.graph', serialize(triplets_list))
-    for s, r, e in triplets_list:
-        nodes_list.add(s)
-        nodes_list.add(e)
-        rels_list.add(r)
+    np.save(save_dir + str(row_id) + '.graph', triplets_list)
     return save_dir + str(row_id) + '.graph'
 
 
@@ -127,7 +155,6 @@ def graph_to_nodes_and_rel(triplets):
 
 
 def create_memory(model, sentences, args):
-    embs = model.encode(sentences, **args).to('cpu')
-    embeddings = {k: v for k, v in zip(sentences, embs)}
-
-    return embeddings
+    embs = model.encode(sentences['custom_value'], **args).to('cpu')
+    embs = {s:e for s,e in zip(sentences['custom_value'], embs)}
+    return embs

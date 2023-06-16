@@ -115,7 +115,7 @@ def main(args):
             #lambda example: {'answer_tok': tokenizer(example[answers_name]['text'], padding='max_length', truncation=True, max_length=512, return_tensors='pt')})
 
         dataset[train_name] = dataset[train_name].map(
-            lambda example: {'graph': text_to_graph_concept(args.graph_depth, example['keywords'], save_dir, example['row_id'], nodes, rels)})
+            lambda example: {'graph': text_to_graph_concept(args.graph_depth, example['keywords'], save_dir + '/graphs/', 'train' + str(example['row_id']), nodes, rels)}, load_from_cache_file=False)
 
         #dataset[train_name] = dataset[train_name].map(
         #    lambda example: graph_to_nodes_and_rel(example['graph']))
@@ -136,7 +136,7 @@ def main(args):
             #lambda example: {'answer_tok': tokenizer(example[answers_name]['text'], padding='max_length', truncation=True, max_length=512, return_tensors='pt')})
 
         dataset[eval_name] = dataset[eval_name].map(
-            lambda example: {'graph': text_to_graph_concept(args.graph_depth, example['keywords'], save_dir, example['row_id'], nodes, rels)})
+            lambda example: {'graph': text_to_graph_concept(args.graph_depth, example['keywords'], save_dir + '/graphs/', 'val' + str(example['row_id']), nodes, rels)}, load_from_cache_file=False)
 
         #dataset[eval_name] = dataset[eval_name].map(
         #    lambda example: graph_to_nodes_and_rel(example['graph']))
@@ -156,7 +156,7 @@ def main(args):
             #lambda example: {'answer_tok': tokenizer(example[answers_name]['text'], padding='max_length', truncation=True, max_length=512, return_tensors='pt')})
 
         dataset[test_name] = dataset[test_name].map(
-            lambda example: {'graph': text_to_graph_concept(args.graph_depth, example['keywords'], save_dir, example['row_id'], nodes, rels)})
+            lambda example: {'graph': text_to_graph_concept(args.graph_depth, example['keywords'], save_dir + '/graphs/', 'test' + str(example['row_id']), nodes, rels)}, load_from_cache_file=False)
 
         #dataset[test_name] = dataset[test_name].map(
         #    lambda example: graph_to_nodes_and_rel(example['graph']))
@@ -167,16 +167,16 @@ def main(args):
         st_model = SentenceTransformer('all-MiniLM-L12-v2') if device == 'cpu' else SentenceTransformer('all-MiniLM-L12-v2').cuda()
 
         st_pars = {'convert_to_tensor': True, "batch_size": 256, "show_progress_bar": True}
-        memory_nodes = create_memory(st_model, nodes, st_pars)
-        memory_rels = create_memory(st_model, rels, st_pars)
+        memory_nodes = create_memory(st_model, list(nodes), st_pars)
+        memory_rels = create_memory(st_model, list(rels), st_pars)
 
         dataset['memory_nodes'] = Dataset.from_pandas(pd.DataFrame(data=memory_nodes))
         dataset['memory_rels'] = Dataset.from_pandas(pd.DataFrame(data=memory_rels))
 
         print('dropping empty graphs')
-        dataset[train_name] = dataset[train_name].filter(lambda row: row['rel_mask'].sum() > 0)
-        dataset[test_name] = dataset[test_name].map(lambda row: row['rel_mask'].sum() > 0)
-        dataset[eval_name] = dataset[eval_name].map(lambda row: row['rel_mask'].sum() > 0)
+        dataset[train_name] = dataset[train_name].filter(lambda row: '<REL_TOK>' in row['question'])
+        dataset[test_name] = dataset[test_name].filter(lambda row: '<REL_TOK>' in row['question'])
+        dataset[eval_name] = dataset[eval_name].filter(lambda row: '<REL_TOK>' in row['question'])
         print('Now the lengths of the datasets are as follows:')
         print(len(dataset[train_name]))
         print(len(dataset[test_name]))
@@ -184,7 +184,7 @@ def main(args):
 
 
 
-        dataset.save_to_disk()
+        dataset.save_to_disk(save_dir)
     # print(dataset['memory_rels'])
 
     if not args.skip_train:
@@ -255,8 +255,10 @@ def main(args):
         trainer = Trainer(**trainer_args)
         trainer.fit(model=gnnqa, train_dataloaders=dataset[train_name], val_dataloaders=dataset[eval_name])
 
+        if args.skip_test:
+            return trainer.callback_metrics["val_rouge"].item() # controllare che ritorni il valore migliore
     if args.skip_test:
-        return trainer.callback_metrics["val_rouge"].item() # controllare che ritorni il valore migliore
+        return 0
     results = trainer.test(dataloaders=dataset[test_name], ckpt_path='last' if args.dont_save else 'best')
     print(results)
 

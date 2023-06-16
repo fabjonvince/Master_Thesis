@@ -32,6 +32,21 @@ def add_special_tokens(
     return new_question
 
 
+def serialize(triplets):
+    div = '<[^_^]>'
+    ser = [s + div + r + div + e for s, r, e in triplets]
+    return ser
+
+
+def deserialize(texts):
+    div = '<[^_^]>'
+    deser = [(s, r, e) for text in texts for s, r, e in text.split(div)]
+    return deser
+
+def serialize_with_pickle(triplets):
+
+
+
 def text_to_graph_concept(
         N,  # numero di salti
         kw,  # domanda
@@ -72,8 +87,8 @@ def text_to_graph_concept(
     # check if save_dir ends with '/'
     if save_dir[-1] != '/':
         save_dir += '/'
-    np.save(save_dir + str(row_id) + '.graph', triplets_list)
-    for s,r,e in triplets_list:
+    np.save(save_dir + str(row_id) + '.graph', serialize(triplets_list))
+    for s, r, e in triplets_list:
         nodes_list.add(s)
         nodes_list.add(e)
         rels_list.add(r)

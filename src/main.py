@@ -187,12 +187,8 @@ def main(args):
         st_pars = {'convert_to_tensor': True, "batch_size": 256, "show_progress_bar": True}
         nembs = create_memory(st_model, nodes, st_pars)
         rembs = create_memory(st_model, rels, st_pars)
-        nembs = Dataset.from_dict(nembs)
-        rembs = Dataset.from_dict(rembs)
-        pdb.set_trace()
-        dataset['memory_rels'] = rembs
-        dataset['memory_nodes'] = nembs
-
+        dataset['memory_nodes'] = Dataset.from_pandas(pd.DataFrame(data=nembs))
+        dataset['memory_rels'] = Dataset.from_pandas(pd.DataFrame(data=rembs))
         dataset.save_to_disk(save_dir)
     # print(dataset['memory_rels'])
 

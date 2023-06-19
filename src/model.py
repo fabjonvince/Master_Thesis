@@ -49,6 +49,7 @@ class GNNQA(pl.LightningModule):
         self.memory_nodes = memory_nodes
         self.memory_rels.set_index('custom_index', inplace=True)
         self.memory_nodes.set_index('custom_index', inplace=True)
+        # dictionary containing k:v where k is the node/rel id and v is the node/rel value
         self.nodes_dict = self.memory_nodes['custom_value'].to_dict()
         self.rels_dict = self.memory_rels['custom_value'].to_dict()
         self.memory_embs = node_embs
@@ -91,10 +92,12 @@ class GNNQA(pl.LightningModule):
             'input_ids'].to(self.device)
         # labels = tensor(labels, dtype=torch.long)
         graph = batch['graph'] # the graph contain the path to the file containing the graph
+        if graph[-3:] != 'npy':
+            graph = graph + '.npy'
         graph = np.load(graph) # the graph contains triplets of int that are indices of nodes and rels
         pdb.set_trace()
         graph = from_triplets_of_ids_to_triplets_of_string(graph, self.nodes_dict, self.rels_dict)
-        rels_ids = self.memory_rels.Index
+        rels_ids = self.memory_rels.index.tolist()
         batch['rel_mask'] = (input_ids == 32100).int()
         batch['gnn_mask'] = (input_ids == 32101).int()
         keywords = batch['keywords']

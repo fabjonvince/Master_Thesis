@@ -156,6 +156,7 @@ class CustomGNNLayer(torch.nn.Module):
                  embs_size,
                  model_size,
                  topk=2,
+                 reprojection_activation='tanh',
                  ):
         super().__init__()
         self.embs_size = embs_size
@@ -167,11 +168,24 @@ class CustomGNNLayer(torch.nn.Module):
                                                        torch.nn.Softmax(dim=1))
 
         # Now I need layer to perform a attention reprojection
-        self.query_reprj = torch.nn.Sequential(torch.nn.Linear(self.model_size, self.model_size), torch.nn.Tanh())
-        self.nodes_reprj = torch.nn.Sequential(torch.nn.Linear(self.embs_size, self.model_size), torch.nn.Tanh())
+        if reprojection_activation == 'tanh':
+            not_linear_func = torch.nn.Tanh()
+        if reprojection_activation == 'relu':
+            not_linear_func = torch.nn.ReLU()
+        if reprojection_activation == 'sigmoid':
+            not_linear_func = torch.nn.Sigmoid()
+        if reprojection_activation == 'elu':
+            not_linear_func = torch.nn.ELU()
+        if reprojection_activation == 'leaky_relu':
+            not_linear_func = torch.nn.LeakyReLU()
+        if reprojection_activation == 'selu':
+            not_linear_func = torch.nn.SELU()
+
+        self.query_reprj = torch.nn.Sequential(torch.nn.Linear(self.model_size, self.model_size), not_linear_func)
+        self.nodes_reprj = torch.nn.Sequential(torch.nn.Linear(self.embs_size, self.model_size), not_linear_func)
 
         # Now the reprojection layer to inject graph knowledge into the GNN-TOK
-        self.gnn_reprj = torch.nn.Sequential(torch.nn.Linear(self.embs_size, self.model_size), torch.nn.Tanh())
+        self.gnn_reprj = torch.nn.Sequential(torch.nn.Linear(self.embs_size, self.model_size), not_linear_func)
 
     def calculate_scores(self, query, k_nodes, probabilities):
         """
@@ -271,7 +285,7 @@ class CustomGNNLayer(torch.nn.Module):
 
             # I turn relations into ids
             noderelsids = [[rels_ids[r] for r in v] for k, v in noderels]
-
+            pdb.set_trace()
             # I turn relation into probability
             pnoderels = extract_values_from_tensor(probs, noderelsids)
 
@@ -362,7 +376,8 @@ class T5GNNBlock(nn.Module):
 
         self.layer.append(T5LayerFF(config))
         self.layer.append(CustomGNNLayer(
-            n_rel=config.n_rel, embs_size=config.gnn_embs_size, model_size=config.d_model, topk=config.gnn_topk
+            n_rel=config.n_rel, embs_size=config.gnn_embs_size, model_size=config.d_model, topk=config.gnn_topk,
+            reprojection_activation=config.reprojection_activation
         ))
 
     def forward(
@@ -841,6 +856,7 @@ class T5GNNForConditionalGeneration(T5PreTrainedModel):
         encoder_config.n_rel = args.n_rel
         encoder_config.gnn_topk = args.gnn_topk
         encoder_config.gnn_embs_size = args.gnn_embs_size
+        encoder_config.reprojection_activation = args.reprojection_activation
         self.encoder = T5GNNStack(encoder_config, self.shared)
 
         decoder_config = copy.deepcopy(config)

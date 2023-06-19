@@ -24,38 +24,51 @@ from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 from pytorch_lightning.loggers import WandbLogger
 
 argparser = argparse.ArgumentParser()
-argparser.add_argument('--dataset', type=str, default='eli5', help='Dataset to use')
+
+
+# RUN Args
 argparser.add_argument('--run_info', type=str, default=None, help='Run info that will be added to run name')
 argparser.add_argument('--wandb_project', type=str, default='gnnqa_default_project', help='wandb project name')
+argparser.add_argument('--debug', action='store_true', help='Debug mode')
+argparser.add_argument('--dont_save', default=False, action='store_true', help='do not save the model')
+argparser.add_argument('--skip_test', default=False, action='store_true', help='skip test')
+argparser.add_argument('--skip_train', default=False, action='store_true', help='skip train')
+
+# Dataset args
+argparser.add_argument('--dataset', type=str, default='eli5', help='Dataset to use')
 argparser.add_argument('--graph', type=str, default='conceptnet', help='Graph to use')
-argparser.add_argument('--train_samples', type=int, default=10, help='Number of train samples')
-argparser.add_argument('--val_samples', type=int, default=10, help='Number of validation samples')
-argparser.add_argument('--test_samples', type=int, default=10, help='Number of test samples')
+argparser.add_argument('--train_samples', type=int, default=None, help='Number of train samples')
+argparser.add_argument('--val_samples', type=int, default=None, help='Number of validation samples')
+argparser.add_argument('--test_samples', type=int, default=None, help='Number of test samples')
+argparser.add_argument('--graph_depth', type=int, default=3, help='Graph depth')
+
+
+# Training args
 argparser.add_argument('--accumulate_grad_batches', type=int, default=8,
                        help='Number of batches to accumulate gradients')
-argparser.add_argument('--layer_with_gnn', type=int, default=[1, 2], help='Layers with KIL')
-argparser.add_argument('--debug', action='store_true', help='Debug mode')
-argparser.add_argument('--gnn_topk', type=int, default=2, help='Number of topk nodes to consider for each root node')
 argparser.add_argument('--load_dataset_from', type=str, default=None, help='Load dataset from path')
-argparser.add_argument('--checkpoint_sentence_transformer', type=str, default='all-MiniLM-L12-v2',
-                       help='Load sentence transformer checkpoint')
 argparser.add_argument('--checkpoint_summarizer', type=str, default='t5-base',
                        help='Summarizer checkpoint from huggingface')
-argparser.add_argument('--sentence_transformer_embedding_size', type=int, default=384,
-                       help='Sentence transformer embedding size')
 argparser.add_argument('--max_length', type=int, default=512, help='Max length of the input sequence')
-argparser.add_argument('--graph_depth', type=int, default=3, help='Graph depth')
 argparser.add_argument('--patience', type=int, default=3, help='Patience for early stopping')
 argparser.add_argument('--max_epochs', type=int, default=1, help='max number of epochs')
 argparser.add_argument('--save_top_k', type=int, default=1, help='save top k checkpoints')
-argparser.add_argument('--dont_save', default=False, action='store_true', help='do not save the model')
 argparser.add_argument('--no_wandb', default=False, action='store_true', help='do not use wandb')
-argparser.add_argument('--no_gnn', default=False, action='store_true', help='do not use gnn')
 argparser.add_argument('--optuna_pruner_callback', default=None, help='optuna pruner callback')
-argparser.add_argument('--skip_test', default=False, action='store_true', help='skip test')
-argparser.add_argument('--skip_train', default=False, action='store_true', help='skip train')
 argparser.add_argument('--model_lr', default=0.000001, type=float, help='model learning rate')
+
+# GNN Args
+argparser.add_argument('--layer_with_gnn', type=int, default=[1, 2], help='Layers with KIL')
+argparser.add_argument('--gnn_topk', type=int, default=2, help='Number of topk nodes to consider for each root node')
+argparser.add_argument('--checkpoint_sentence_transformer', type=str, default='all-MiniLM-L12-v2',
+                       help='Load sentence transformer checkpoint')
+argparser.add_argument('--sentence_transformer_embedding_size', type=int, default=384,
+                       help='Sentence transformer embedding size')
+argparser.add_argument('--no_gnn', default=False, action='store_true', help='do not use gnn. To lunch baselines')
 argparser.add_argument('--gnn_lr', default=None, type=float, help='gnn learning rate')
+argparser.add_argument('--reprojection_activation', default='tanh', type=str,
+                       choices=['tanh', 'relu', 'sigmoid','elu', 'leaky_relu', 'selu'], help='gnn batch size')
+
 name_mapping = {
     "eli5": ("train_eli5", "validation_eli5", "test_eli5", "title", "answers"),
     "conceptnet": ("rel", "arg1", "arg2"),
@@ -65,7 +78,7 @@ name_mapping = {
 def main(args):
     dataset_columns = name_mapping.get(args.dataset, None)
     train_name = dataset_columns[0]
-    eval_name = dataset_columns[1]
+    val_name = dataset_columns[1]
     test_name = dataset_columns[2]
     question_name = dataset_columns[3]
     answers_name = dataset_columns[4]
@@ -92,15 +105,15 @@ def main(args):
         print(
             f"Sampling dataset to {args.train_samples} train, {args.val_samples} val, {args.test_samples} test samples")
         dataset[train_name] = dataset[train_name].shuffle(seed=42).select(range(args.train_samples))
-        dataset[eval_name] = dataset[eval_name].shuffle(seed=42).select(range(args.val_samples))
+        dataset[val_name] = dataset[val_name].shuffle(seed=42).select(range(args.val_samples))
         dataset[test_name] = dataset[test_name].shuffle(seed=42).select(range(args.test_samples))
         print(
-            f"Dataset sampling done, the shapes are {len(dataset[train_name])}, {len(dataset[eval_name])}, {len(dataset[test_name])}")
+            f"Dataset sampling done, the shapes are {len(dataset[train_name])}, {len(dataset[val_name])}, {len(dataset[test_name])}")
 
         # Now add a row_id to each sample
         print("Adding row_id to each sample")
         dataset[train_name] = dataset[train_name].map(lambda example, idx: {'row_id': idx}, with_indices=True)
-        dataset[eval_name] = dataset[eval_name].map(lambda example, idx: {'row_id': idx}, with_indices=True)
+        dataset[val_name] = dataset[val_name].map(lambda example, idx: {'row_id': idx}, with_indices=True)
         dataset[test_name] = dataset[test_name].map(lambda example, idx: {'row_id': idx}, with_indices=True)
         print("Adding row_id done")
 
@@ -126,25 +139,25 @@ def main(args):
         # dataset[train_name] = dataset[train_name].map(
         #    lambda example: graph_to_nodes_and_rel(example['graph']))
 
-        dataset[eval_name] = dataset[eval_name].map(
+        dataset[val_name] = dataset[val_name].map(
             lambda example: {'keywords': text_to_keywords(example[question_name])})
 
-        dataset[eval_name] = dataset[eval_name].map(
+        dataset[val_name] = dataset[val_name].map(
             lambda example: {'question': add_special_tokens(example[question_name], example['keywords'])})
 
-        # dataset[eval_name] = dataset[eval_name].map(
+        # dataset[val_name] = dataset[val_name].map(
         # lambda example: tokenizer(example['question'], padding='max_length', truncation=True, max_length=args.max_length, return_tensors='pt'))
 
-        # dataset[eval_name] = dataset[eval_name].map(
+        # dataset[val_name] = dataset[val_name].map(
         # lambda example: {'answer_tok': tokenizer(example[answers_name]['text'], padding='max_length', truncation=True, max_length=512, return_tensors='pt')})
 
-        dataset[eval_name] = dataset[eval_name].map(
+        dataset[val_name] = dataset[val_name].map(
             lambda example: {
                 'graph': text_to_graph_concept(args.graph_depth, example['keywords'], save_dir + '/graphs/',
                                                'val' + str(example['row_id']), nodes_dict, rels_dict)},
             load_from_cache_file=False)
 
-        # dataset[eval_name] = dataset[eval_name].map(
+        # dataset[val_name] = dataset[val_name].map(
         #    lambda example: graph_to_nodes_and_rel(example['graph']))
 
         dataset[test_name] = dataset[test_name].map(
@@ -172,11 +185,11 @@ def main(args):
         print('dropping empty graphs')
         dataset[train_name] = dataset[train_name].filter(lambda row: '<REL_TOK>' in row['question'])
         dataset[test_name] = dataset[test_name].filter(lambda row: '<REL_TOK>' in row['question'])
-        dataset[eval_name] = dataset[eval_name].filter(lambda row: '<REL_TOK>' in row['question'])
+        dataset[val_name] = dataset[val_name].filter(lambda row: '<REL_TOK>' in row['question'])
         print('Now the lengths of the datasets are as follows:')
         print(len(dataset[train_name]))
         print(len(dataset[test_name]))
-        print(len(dataset[eval_name]))
+        print(len(dataset[val_name]))
 
         print('creating nodes and rels embeddings')
         # Load a pretrained model with all-MiniLM-L12-v2 checkpoint
@@ -245,7 +258,15 @@ def main(args):
         dataset[train_name] = dataset[train_name].map(
             lambda example: {'T5_question': 'question: ' + example['question']})
         dataset[test_name] = dataset[test_name].map(lambda example: {'T5_question': 'question: ' + example['question']})
-        dataset[eval_name] = dataset[eval_name].map(lambda example: {'T5_question': 'question: ' + example['question']})
+        dataset[val_name] = dataset[val_name].map(lambda example: {'T5_question': 'question: ' + example['question']})
+
+        # now I use args.train_samples, args.test_samples and args.eval_samples to limit the dataset
+        if args.train_samples:
+            dataset[train_name] = dataset[train_name].select(range(args.train_samples))
+        if args.test_samples:
+            dataset[test_name] = dataset[test_name].select(range(args.test_samples))
+        if args.val_samples:
+            dataset[val_name] = dataset[val_name].select(range(args.val_samples))
 
         trainer_args = {
             'max_epochs': args.max_epochs,
@@ -259,7 +280,7 @@ def main(args):
         }
 
         trainer = Trainer(**trainer_args)
-        trainer.fit(model=gnnqa, train_dataloaders=dataset[train_name], val_dataloaders=dataset[eval_name])
+        trainer.fit(model=gnnqa, train_dataloaders=dataset[train_name], val_dataloaders=dataset[val_name])
 
         if args.skip_test:
             return trainer.callback_metrics["val_rouge"].item()  # controllare che ritorni il valore migliore

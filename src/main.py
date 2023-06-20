@@ -277,7 +277,7 @@ def main(args):
         # model creation
         model = T5GNNForConditionalGeneration.from_pretrained(args.checkpoint_summarizer, args)
         gnnqa = GNNQA(model=model, ids_to_rels=rels, ids_to_nodes=nodes,
-                      node_embs=dataset['memory_nodes'], tokenizer=tokenizer, save_dir=save_dir,
+                      memory_embs=dataset['memory_nodes'].to_dict(), tokenizer=tokenizer, save_dir=save_dir,
                       model_lr=args.model_lr, gnn_lr=args.gnn_lr, gnn_layers=args.layer_with_gnn)
 
         # create T5 question for each example

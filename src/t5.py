@@ -246,7 +246,7 @@ class CustomGNNLayer(torch.nn.Module):
                 rel_mask=None,  # index of the rel tokens
                 gnn_triplets=None,  # list of triplets
                 ids_to_nodes=None,  # node memory
-                node_embs=None,  # embeddings of the nodes in the memory
+                memory_embs=None,  # embeddings of the nodes in the memory
                 current_reasoning_path: AllReasoningPath = None,
                 rels_ids=None,  # ids of the relations in the memory
                 ):
@@ -257,7 +257,7 @@ class CustomGNNLayer(torch.nn.Module):
             assert hidden_states[gnn_mask.bool()].shape[0] > 0, "The GNN mask must be not empty"
             assert hidden_states[rel_mask.bool()].shape[0] > 0, "The REL mask must be not empty"
             assert ids_to_nodes is not None, "The memory nodes must be not None"
-            assert node_embs is not None, "The memory embeddings must be not None"
+            assert memory_embs is not None, "The memory embeddings must be not None"
         except AssertionError as e:
             print(e)
             print("hidden_states.shape", hidden_states.shape)
@@ -266,7 +266,7 @@ class CustomGNNLayer(torch.nn.Module):
             print("gnn_mask.shape", gnn_mask.shape)
             print("rel_mask.shape", rel_mask.shape)
             print("ids_to_nodes.shape", ids_to_nodes.shape)
-            print("node_embs.shape", node_embs.shape)
+            print("memory_embs.shape", memory_embs.shape)
             print("current_reasoning_path", current_reasoning_path.get_all_reasoning_path())
             exit()
         pdb.set_trace()
@@ -310,7 +310,7 @@ class CustomGNNLayer(torch.nn.Module):
                 node_embs = list()
                 for ns in nods:
                     # turn them into embedding using the memory matrix
-                    node_embs.append(torch.stack([torch.tensor(node_embs[n]) for n in ns]))
+                    node_embs.append(torch.stack([torch.tensor(memory_embs[n]) for n in ns]))
                 # compute the scores associaed to each embedding
                 scores, embs = self.calculate_scores(query.view(1, -1), k_nodes=node_embs,
                                                      probabilities=probs.view(1, -1))
@@ -400,7 +400,7 @@ class T5GNNBlock(nn.Module):
         rel_mask=None,  # index of the rel tokens
         gnn_triplets=None,  # list of triplets
         ids_to_nodes=None,  # node memory
-        node_embs=None,  # embeddings of the nodes in the memory
+        memory_embs=None,  # embeddings of the nodes in the memory
         current_reasoning_path: AllReasoningPath = None,
         rels_ids=None,  # ids of the relations in the memory
     ):
@@ -487,7 +487,7 @@ class T5GNNBlock(nn.Module):
             rel_mask,  # index of the rel tokens
             gnn_triplets,  # list of triplets
             ids_to_nodes,  # node memory
-            node_embs,  # embeddings of the nodes in the memory
+            memory_embs,  # embeddings of the nodes in the memory
             current_reasoning_path,
             rels_ids,  # ids of the relations in the memory
             )
@@ -588,7 +588,7 @@ class T5GNNStack(T5PreTrainedModel):
         rel_mask=None,  # index of the rel tokens
         gnn_triplets=None,  # list of triplets
         ids_to_nodes=None,  # node memory
-        node_embs=None,  # embeddings of the nodes in the memory
+        memory_embs=None,  # embeddings of the nodes in the memory
         current_reasoning_path: AllReasoningPath = None,
         rels_ids=None,  # ids of the relations in the memory
     ):
@@ -735,7 +735,7 @@ class T5GNNStack(T5PreTrainedModel):
                         rel_mask=rel_mask,  # index of the rel tokens
                         gnn_triplets=gnn_triplets,  # list of triplets
                         ids_to_nodes=ids_to_nodes,  # node memory
-                        node_embs=node_embs,  # embeddings of the nodes in the memory
+                        memory_embs=memory_embs,  # embeddings of the nodes in the memory
                         current_reasoning_path=current_reasoning_path,  # current reasoning path
                         rels_ids=rels_ids,  # ids of the relations in the memory
                     )
@@ -758,7 +758,7 @@ class T5GNNStack(T5PreTrainedModel):
                         rel_mask=rel_mask,  # index of the rel tokens
                         gnn_triplets=gnn_triplets,  # list of triplets
                         ids_to_nodes=ids_to_nodes,  # node memory
-                        node_embs=node_embs,  # embeddings of the nodes in the memory
+                        memory_embs=memory_embs,  # embeddings of the nodes in the memory
                         current_reasoning_path=current_reasoning_path,  # current reasoning path
                         rels_ids = rels_ids,  # ids of the relations in the memory
                     )
@@ -950,7 +950,7 @@ class T5GNNForConditionalGeneration(T5PreTrainedModel):
         rel_mask=None,  # index of the rel tokens
         gnn_triplets=None,  # list of triplets
         ids_to_nodes=None,  # node memory
-        node_embs=None,  # embeddings of the nodes in the memory
+        memory_embs=None,  # embeddings of the nodes in the memory
         current_reasoning_path: AllReasoningPath = None,
         rels_ids=None,  # ids of the relations in the memory,
     ) -> Union[Tuple[torch.FloatTensor], Seq2SeqLMOutput]:
@@ -1003,7 +1003,7 @@ class T5GNNForConditionalGeneration(T5PreTrainedModel):
                 rel_mask=rel_mask,  # index of the rel tokens
                 gnn_triplets=gnn_triplets,  # list of triplets
                 ids_to_nodes=ids_to_nodes,  # node memory
-                node_embs=node_embs,  # embeddings of the nodes in the memory
+                memory_embs=memory_embs,  # embeddings of the nodes in the memory
                 current_reasoning_path = current_reasoning_path,
                 rels_ids=rels_ids,  # ids of the relations in the memory
             )

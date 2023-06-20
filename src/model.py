@@ -32,8 +32,8 @@ gen_test_params = {
 
 class GNNQA(pl.LightningModule):
     def __init__(self, model=None,
-                 memory_rels:pd.DataFrame=None,
-                 memory_nodes:pd.DataFrame=None,
+                 ids_to_rels=None,
+                 ids_to_nodes=None,
                  node_embs=None,
                  tokenizer=None,
                  save_dir=None,
@@ -45,14 +45,13 @@ class GNNQA(pl.LightningModule):
             gnn_layers = []
         self.gnn_layers = gnn_layers
         self.model = model
-        self.memory_rels = memory_rels
-        self.memory_nodes = memory_nodes
-        self.memory_rels.set_index('custom_index', inplace=True)
-        self.memory_nodes.set_index('custom_index', inplace=True)
+
         # dictionary containing k:v where k is the node/rel id and v is the node/rel value
-        self.nodes_dict = self.memory_nodes['custom_value'].to_dict()
-        self.rels_dict = self.memory_rels['custom_value'].to_dict()
-        self.memory_embs = node_embs
+        self.ids_to_rels = ids_to_rels
+        self.ids_to_nodes = ids_to_nodes
+        # node embeddings
+        self.node_embs = node_embs
+
         self.model_lr = model_lr
         self.gnn_lr = gnn_lr
         self.tokenizer = tokenizer
@@ -68,7 +67,8 @@ class GNNQA(pl.LightningModule):
                 gnn_mask=None,
                 rel_mask=None,
                 current_reasoning_path=None,
-                memory_nodes=None,
+                ids_to_nodes=None,
+                node_embs=None,
                 rels_ids=None,
                 model_lr=None,
                 gnn_lr=None,
@@ -78,11 +78,14 @@ class GNNQA(pl.LightningModule):
 
         output = self.model(input_ids=input_ids, attention_mask=attention_mask, labels=labels, gnn_triplets=gnn_triplets,
                             gnn_mask=gnn_mask, rel_mask=rel_mask, current_reasoning_path=current_reasoning_path,
-                            memory_nodes=memory_nodes, rels_ids=rels_ids)
+                            ids_to_nodes=ids_to_nodes, node_embs=node_embs, rels_ids=rels_ids)
 
         return output.loss, output.logits
 
+    # retrieve data from the batch for the next step
     def prepare_data_from_batch(self, batch):
+        pdb.set_trace()
+
         toks = \
             self.tokenizer(batch['T5_question'], padding='max_length', truncation=True, max_length=128,
                            return_tensors='pt').to(self.device)
@@ -94,15 +97,16 @@ class GNNQA(pl.LightningModule):
             'input_ids'].to(self.device)
         # labels = tensor(labels, dtype=torch.long)
         graph = batch['graph'] # the graph contain the path to the file containing the graph
-        if graph[-3:] != 'npy':
+        if graph[-3:] != 'npy': # add the extension if it is not present
             graph = graph + '.npy'
         graph = np.load(graph) # the graph contains triplets of int that are indices of nodes and rels
-        pdb.set_trace()
-        graph = from_triplets_of_ids_to_triplets_of_string(graph, self.nodes_dict, self.rels_dict)
-        rels_ids = self.memory_rels.index.tolist()
+
+        graph = from_triplets_of_ids_to_triplets_of_string(graph, self.ids_to_nodes, self.ids_to_rels) # convert the triplets of ids to triplets of string
+        rels_ids = {v: k for k,v in self.ids_to_rels.items()} # reverse the dictionary
         batch['rel_mask'] = (input_ids == 32100).int()
         batch['gnn_mask'] = (input_ids == 32101).int()
         keywords = batch['keywords']
+        # set the path in the graph
         reasoning_path = AllReasoningPath()
         reasoning_path.set_root_nodes(keywords, 2)
         return batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids
@@ -113,7 +117,7 @@ class GNNQA(pl.LightningModule):
 
         loss = self(input_ids=input_ids, attention_mask=attention_mask, labels=labels, gnn_triplets=graph,
                     gnn_mask=batch['gnn_mask'], rel_mask=batch['rel_mask'], current_reasoning_path=reasoning_path,
-                    memory_nodes=self.memory_nodes, rels_ids=rels_ids)[0]
+                    ids_to_nodes=self.ids_to_nodes, node_embs=self.node_embs, rels_ids=rels_ids)[0]
 
         self.log('train_loss', loss.item(), on_step=True, on_epoch=True, prog_bar=True)
         return loss
@@ -124,7 +128,8 @@ class GNNQA(pl.LightningModule):
         predictions = self.model.generate(input_ids=input_ids, gnn_triplets=graph,
                                    gnn_mask=batch['gnn_mask'], rel_mask=batch['rel_mask'],
                                    current_reasoning_path=reasoning_path,
-                                   memory_nodes=self.memory_nodes,
+                                   ids_to_nodes=self.ids_to_nodes,
+                                   node_embs=self.node_embs,
                                    rels_ids=rels_ids, **gen_val_params)
         predictions = [self.tokenizer.decode(predictions[0], skip_special_tokens=True)]
         targets = batch['answers']['text']
@@ -140,7 +145,8 @@ class GNNQA(pl.LightningModule):
         predictions = self.model.generate(input_ids=input_ids, gnn_triplets=graph,
                                           gnn_mask=batch['gnn_mask'], rel_mask=batch['rel_mask'],
                                           current_reasoning_path=reasoning_path,
-                                          memory_nodes=self.memory_nodes,
+                                          ids_to_nodes=self.ids_to_nodes,
+                                          node_embs=self.node_embs,
                                           rels_ids=rels_ids, **gen_test_params)
         predictions = [self.tokenizer.decode(predictions[0], skip_special_tokens=True)]
         targets = batch['answers']['text']

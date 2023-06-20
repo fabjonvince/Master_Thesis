@@ -76,18 +76,25 @@ name_mapping = {
 
 
 def main(args):
+
+    # take as input the dataset name and return the dataset columns
     dataset_columns = name_mapping.get(args.dataset, None)
     train_name = dataset_columns[0]
     val_name = dataset_columns[1]
     test_name = dataset_columns[2]
     question_name = dataset_columns[3]
     answers_name = dataset_columns[4]
+
+    # set device
     device = 'gpu' if torch.cuda.is_available() else 'cpu'
 
+    pdb.set_trace()
+
+    # load tokenizer and add special tokens
     tokenizer = T5Tokenizer.from_pretrained('t5-base')
     tokenizer.add_special_tokens(
         {"additional_special_tokens": tokenizer.additional_special_tokens + ["<REL_TOK>", "<GNN_TOK>"]})
-    nodes, rels = get_node_and_rel_dict()
+
     # load dataset
     if args.load_dataset_from is not None:
 
@@ -95,9 +102,13 @@ def main(args):
 
     else:
 
+        # directory where to save the dataset
         save_dir = f'dataset/eli5_{args.train_samples}_{args.val_samples}_{args.test_samples}_conceptnet'
+        # get the original dataset
         dataset = get_dataset(args.dataset)
 
+        # get all the nodes and relations from the graph and create a dictionary with value and ID (index)
+        nodes, rels = get_node_and_rel_dict()
         nodes_dict = {row.custom_value: row.custom_index for row in nodes.itertuples(index=True)}
         rels_dict = {row.custom_value: row.custom_index for row in rels.itertuples(index=True)}
 
@@ -117,7 +128,7 @@ def main(args):
         dataset[test_name] = dataset[test_name].map(lambda example, idx: {'row_id': idx}, with_indices=True)
         print("Adding row_id done")
 
-        # Now add a row_id to each sample
+        # Now add the rows: keywords, question, graph
         dataset[train_name] = dataset[train_name].map(
             lambda example: {'keywords': text_to_keywords(example[question_name])})
 
@@ -179,6 +190,7 @@ def main(args):
 
         # dataset[test_name] = dataset[test_name].map(
         #    lambda example: graph_to_nodes_and_rel(example['graph']))
+
         print('The number of nodes is:  ', len(nodes))
         print('The number of relations is:  ', len(rels))
 
@@ -196,23 +208,30 @@ def main(args):
         st_model = SentenceTransformer('all-MiniLM-L12-v2') if device == 'cpu' else SentenceTransformer(
             'all-MiniLM-L12-v2').cuda()
         st_model.max_seq_length = 32
-
         st_pars = {'convert_to_tensor': True, "batch_size": 256, "show_progress_bar": True}
+        # use st to all the nodes and rels of the graphs and save it to the dataset
         nembs = create_memory(st_model, nodes, st_pars)
         rembs = create_memory(st_model, rels, st_pars)
         dataset['memory_nodes'] = Dataset.from_pandas(pd.DataFrame(data=nembs))
         dataset['memory_rels'] = Dataset.from_pandas(pd.DataFrame(data=rembs))
+
+        # save the dataset to disk
         dataset.save_to_disk(save_dir)
+
     # print(dataset['memory_rels'])
 
-    if not args.skip_train:
-        print('dataset loaded')
+    print('dataset loaded')
 
+    if not args.skip_train:
+
+        print("In Main")
+
+        # set total number of rel, nodes and gnn embs size
         setattr(args, 'n_rel', len(dataset['memory_rels'].features))
         setattr(args, 'n_nodes', len(dataset['memory_nodes'].features))
         setattr(args, 'gnn_embs_size', args.sentence_transformer_embedding_size)
 
-        print("In Main")
+
 
         # Next I take the date in gg_mm_yyyy format
         date_ = datetime.now().strftime("%d_%m_%Y")
@@ -223,12 +242,14 @@ def main(args):
         if args.run_info:
             run_name += '_' + args.run_info
 
+        # set wandb logger
         if not args.no_wandb:
             logger = WandbLogger(
                 name=run_name,
                 project=args.wandb_project,
             )
 
+        # set callbacks
         callbacks = []
         early_stopper = EarlyStopping(monitor='val_rouge', patience=args.patience, mode='min')
         callbacks.append(early_stopper)
@@ -240,7 +261,7 @@ def main(args):
                 os.makedirs(save_dir)
         else:
             print('Save dir already exists, exiting...')
-            exit(1)
+            #exit(1)
         if not args.dont_save:
             md_checkpoint = ModelCheckpoint(monitor='val_rouge', save_top_k=args.save_top_k, mode='min',
                                             dirpath=save_dir,
@@ -249,24 +270,21 @@ def main(args):
         else:
             save_dir = None
 
+        # create dict with ID and word for each nodes and rels
+        nodes = {i: word for i, word in enumerate(dataset['memory_nodes'].features)}
+        rels = {i: word for i, word in enumerate(dataset['memory_rels'].features)}
+
         # model creation
         model = T5GNNForConditionalGeneration.from_pretrained(args.checkpoint_summarizer, args)
-        gnnqa = GNNQA(model=model, memory_rels=rels,
-                      memory_nodes=nodes, tokenizer=tokenizer, save_dir=save_dir,
+        gnnqa = GNNQA(model=model, ids_to_rels=rels, ids_to_nodes=nodes,
+                      node_embs=dataset['memory_nodes'], tokenizer=tokenizer, save_dir=save_dir,
                       model_lr=args.model_lr, gnn_lr=args.gnn_lr, gnn_layers=args.layer_with_gnn)
 
+        # create T5 question for each example
         dataset[train_name] = dataset[train_name].map(
             lambda example: {'T5_question': 'question: ' + example['question']})
         dataset[test_name] = dataset[test_name].map(lambda example: {'T5_question': 'question: ' + example['question']})
         dataset[val_name] = dataset[val_name].map(lambda example: {'T5_question': 'question: ' + example['question']})
-
-        # now I use args.train_samples, args.test_samples and args.eval_samples to limit the dataset
-        if args.train_samples:
-            dataset[train_name] = dataset[train_name].select(range(args.train_samples))
-        if args.test_samples:
-            dataset[test_name] = dataset[test_name].select(range(args.test_samples))
-        if args.val_samples:
-            dataset[val_name] = dataset[val_name].select(range(args.val_samples))
 
         trainer_args = {
             'max_epochs': args.max_epochs,

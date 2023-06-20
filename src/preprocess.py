@@ -88,6 +88,7 @@ def text_to_graph_concept(
         nodes_dict,
         rels_dict,
 ):
+
     obj = 'arg2'
     graph = get_dataset('conceptnet')
     graph = graph['train']
@@ -95,7 +96,6 @@ def text_to_graph_concept(
     graph.set_index('arg1', inplace=True)
     triplets_list = []
     entities_list = kw
-
 
     for i in range(N):
         kw = [k for k in (set(kw) & set(graph.index))]
@@ -119,8 +119,8 @@ def text_to_graph_concept(
     # check if save_dir ends with '/'
     if save_dir[-1] != '/':
         save_dir += '/'
-    np.save(save_dir + str(row_id) + '.graph', triplets_list)
-    return save_dir + str(row_id) + '.graph'
+    np.save(save_dir + str(row_id) + '.graph.npy', triplets_list)
+    return save_dir + str(row_id) + '.graph.npy'
 
 
 def print_triplets(triplets):

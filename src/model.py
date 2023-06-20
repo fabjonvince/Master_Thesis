@@ -84,7 +84,7 @@ class GNNQA(pl.LightningModule):
 
     # retrieve data from the batch for the next step
     def prepare_data_from_batch(self, batch):
-        pdb.set_trace()
+        #pdb.set_trace()
 
         toks = \
             self.tokenizer(batch['T5_question'], padding='max_length', truncation=True, max_length=128,

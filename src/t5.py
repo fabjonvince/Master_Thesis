@@ -271,7 +271,7 @@ class CustomGNNLayer(torch.nn.Module):
             print("memory_embs.shape", memory_embs.shape)
             print("current_reasoning_path", current_reasoning_path.get_all_reasoning_path())
             exit()
-        pdb.set_trace()
+        #pdb.set_trace()
         # I generate the probability over all the relations
         rel_prob = self.classification_head(hidden_states[rel_mask.bool()])
         # rel_prob shape (batch_size=1, n_REL_TOK, n_rels)

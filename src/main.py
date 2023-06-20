@@ -11,7 +11,7 @@ import torch
 from datasets import load_from_disk, Dataset
 from transformers import T5Tokenizer, TrainingArguments
 import wandb
-from preprocess import text_to_graph_concept, add_special_tokens, text_to_keywords, create_memory, \
+from preprocess import text_to_graph_concept, add_special_tokens, create_memory, \
     graph_to_nodes_and_rel, get_node_and_rel_dict
 from data import get_dataset
 from model import GNNQA
@@ -129,8 +129,13 @@ def main(args):
         print("Adding row_id done")
 
         # Now add the rows: keywords, question, graph
+        #dataset[train_name] = dataset[train_name].map(
+            #lambda example: {'keywords': text_to_keywords(example[question_name])})
+
         dataset[train_name] = dataset[train_name].map(
-            lambda example: {'keywords': text_to_keywords(example[question_name])})
+            lambda example: text_to_graph_concept(args.graph_depth, example[question_name], save_dir + '/graphs/',
+                                               'train' + str(example['row_id']), nodes_dict, rels_dict),
+            load_from_cache_file=False)
 
         dataset[train_name] = dataset[train_name].map(
             lambda example: {'question': add_special_tokens(example[question_name], example['keywords'])})
@@ -141,17 +146,18 @@ def main(args):
         # dataset[train_name] = dataset[train_name].map(
         # lambda example: {'answer_tok': tokenizer(example[answers_name]['text'], padding='max_length', truncation=True, max_length=512, return_tensors='pt')})
 
-        dataset[train_name] = dataset[train_name].map(
-            lambda example: {
-                'graph': text_to_graph_concept(args.graph_depth, example['keywords'], save_dir + '/graphs/',
-                                               'train' + str(example['row_id']), nodes_dict, rels_dict)},
-            load_from_cache_file=False)
+
 
         # dataset[train_name] = dataset[train_name].map(
         #    lambda example: graph_to_nodes_and_rel(example['graph']))
 
+        #dataset[val_name] = dataset[val_name].map(
+            #lambda example: {'keywords': text_to_keywords(example[question_name])})
+
         dataset[val_name] = dataset[val_name].map(
-            lambda example: {'keywords': text_to_keywords(example[question_name])})
+            lambda example:text_to_graph_concept(args.graph_depth, example[question_name], save_dir + '/graphs/',
+                                                 'val' + str(example['row_id']), nodes_dict, rels_dict),
+            load_from_cache_file=False)
 
         dataset[val_name] = dataset[val_name].map(
             lambda example: {'question': add_special_tokens(example[question_name], example['keywords'])})
@@ -162,17 +168,18 @@ def main(args):
         # dataset[val_name] = dataset[val_name].map(
         # lambda example: {'answer_tok': tokenizer(example[answers_name]['text'], padding='max_length', truncation=True, max_length=512, return_tensors='pt')})
 
-        dataset[val_name] = dataset[val_name].map(
-            lambda example: {
-                'graph': text_to_graph_concept(args.graph_depth, example['keywords'], save_dir + '/graphs/',
-                                               'val' + str(example['row_id']), nodes_dict, rels_dict)},
-            load_from_cache_file=False)
+
 
         # dataset[val_name] = dataset[val_name].map(
         #    lambda example: graph_to_nodes_and_rel(example['graph']))
+
+        #dataset[test_name] = dataset[test_name].map(
+            #lambda example: {'keywords': text_to_keywords(example[question_name])})
 
         dataset[test_name] = dataset[test_name].map(
-            lambda example: {'keywords': text_to_keywords(example[question_name])})
+            lambda example: text_to_graph_concept(args.graph_depth, example[question_name], save_dir + '/graphs/',
+                                               'test' + str(example['row_id']), nodes_dict, rels_dict),
+            load_from_cache_file=False)
 
         dataset[test_name] = dataset[test_name].map(
             lambda example: {'question': add_special_tokens(example[question_name], example['keywords'])})
@@ -182,11 +189,7 @@ def main(args):
         # dataset[test_name] = dataset[test_name].map(
         # lambda example: {'answer_tok': tokenizer(example[answers_name]['text'], padding='max_length', truncation=True, max_length=512, return_tensors='pt')})
 
-        dataset[test_name] = dataset[test_name].map(
-            lambda example: {
-                'graph': text_to_graph_concept(args.graph_depth, example['keywords'], save_dir + '/graphs/',
-                                               'test' + str(example['row_id']), nodes_dict, rels_dict)},
-            load_from_cache_file=False)
+
 
         # dataset[test_name] = dataset[test_name].map(
         #    lambda example: graph_to_nodes_and_rel(example['graph']))

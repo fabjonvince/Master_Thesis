@@ -10,7 +10,7 @@ from keybert import KeyBERT
 
 from data import get_dataset
 
-
+"""
 def text_to_keywords(
         text,  # domanda
 ):
@@ -20,6 +20,7 @@ def text_to_keywords(
     txt = np.unique(txt)
 
     return txt
+"""
 
 
 def add_special_tokens(
@@ -82,12 +83,18 @@ def from_triplets_of_ids_to_triplets_of_string(triplets, node_dict, rel_dict):
 
 def text_to_graph_concept(
         N,  # numero di salti
-        kw,  # domanda
+        text,  # domanda
         save_dir,
         row_id,
         nodes_dict,
         rels_dict,
 ):
+
+    kw_model = KeyBERT()
+    kw = kw_model.extract_keywords(text)
+    kw = [kw[i][0].lower() for i in range(len(kw))]
+    kw = np.unique(kw)
+    txt = kw
 
     obj = 'arg2'
     graph = get_dataset('conceptnet')
@@ -99,6 +106,8 @@ def text_to_graph_concept(
 
     for i in range(N):
         kw = [k for k in (set(kw) & set(graph.index))]
+        if i == 0:
+            txt = kw
         # filtered = graph.loc[kw, [subj, rel, obj]] #
         filtered = graph.loc[kw]
         # triplets = filtered.to_numpy()
@@ -120,7 +129,7 @@ def text_to_graph_concept(
     if save_dir[-1] != '/':
         save_dir += '/'
     np.save(save_dir + str(row_id) + '.graph.npy', triplets_list)
-    return save_dir + str(row_id) + '.graph.npy'
+    return {'keywords': txt, 'graph': save_dir + str(row_id) + '.graph.npy'}
 
 
 def print_triplets(triplets):

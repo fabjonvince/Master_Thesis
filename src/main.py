@@ -15,7 +15,7 @@ from preprocess import text_to_graph_concept, add_special_tokens, text_to_keywor
     graph_to_nodes_and_rel, get_node_and_rel_dict
 from data import get_dataset
 from model import GNNQA
-from t5 import T5GNNForConditionalGeneration
+from t5 import T5GNNForConditionalGeneration, available_reporjection_activations
 from pytorch_lightning import Trainer
 from sentence_transformers import SentenceTransformer
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
@@ -67,7 +67,7 @@ argparser.add_argument('--sentence_transformer_embedding_size', type=int, defaul
 argparser.add_argument('--no_gnn', default=False, action='store_true', help='do not use gnn. To lunch baselines')
 argparser.add_argument('--gnn_lr', default=None, type=float, help='gnn learning rate')
 argparser.add_argument('--reprojection_activation', default='tanh', type=str,
-                       choices=['tanh', 'relu', 'sigmoid','elu', 'leaky_relu', 'selu'], help='gnn batch size')
+                       choices=available_reporjection_activations, help='gnn batch size')
 
 name_mapping = {
     "eli5": ("train_eli5", "validation_eli5", "test_eli5", "title", "answers"),

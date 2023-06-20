@@ -17,6 +17,8 @@ from tools import extract_all_relations_for_a_node, extract_values_from_tensor, 
 
 #from model import CustomKilLayer
 
+available_reporjection_activations=['tanh', 'relu', 'sigmoid','elu', 'leaky_relu', 'selu']
+
 
 class CustomKilLayer(torch.nn.Module):
 

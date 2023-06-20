@@ -1,32 +1,60 @@
+import pdb
 import sys
 from functools import partial
 
-from src.main import main
+from main import main
 from optuna.integration import PyTorchLightningPruningCallback
 import optuna
+from t5 import available_reporjection_activations
+import subprocess
+
+available_sentence_tranformers_checkpoints = [
+    ('bert-base-nli-mean-tokens', 768),
+    ('bert-large-nli-mean-tokens', 1024),
+    ('roberta-base-nli-mean-tokens', 768),
+    ('roberta-large-nli-mean-tokens', 1024),
+    ('distilbert-base-nli-mean-tokens', 768),
+    ('distilbert-multilingual-nli-stsb-quora-ranking', 768),
+    ('distilbert-base-nli-stsb-mean-tokens', 768),
+    ('all-mpnet-base-v2', 768),
+    ('all-distilroberta-v1', 768),
+    ('all-MiniLM-L12-v2', 384),
+    ('intfloat/e5-small-v2', 384),
+    ('intfloat/e5-base-v2', 768),
+]
+
 
 # a entry is
 # key : [arg_name, arg_type, arg_help, arg_range_min, arg_range_max, arg_range_step, arg_log_scale, arg_default_value]
 # the key are: model_lr, epochs, gnn_lr, layer_with_gnn_1, layer_with_gnn_2, layer_with_gnn_3, skip_test, skip_train, gnn_topk, optuna_pruner_callback
 
+
 HYPERPARAMS = {
-    "model_lr": ['--model_lr', float, "the learning rate of the language model", 0.01, 0.0000001, None, True, 0.00005],
-    "epochs": ['--epochs', int, "the number of epochs of the language model", 1, 5, 1, False, 3],
-    "gnn_lr": ['--gnn_lr', float, "the learning rate of the gnn model", 0.01, 0.0000001, None, False, 0.00005],
-    "layer_with_gnn_1": ['--layer_with_gnn_1', int, "the layer of the language model to use for the gnn", 0, 9, 1,
+    "model_lr": ['--model_lr', 'float', "the learning rate of the language model", 0.0000001, 0.01, None, True, 0.00005],
+    "epochs": ['--epochs', 'int', "the number of epochs of the language model", 1, 5, 1, False, 3],
+    "gnn_lr": ['--gnn_lr', 'float', "the learning rate of the gnn model", 0.0000001, 0.01, None, True, 0.00005],
+    "layer_with_gnn_1": ['--layer_with_gnn_1', 'int', "the layer of the language model to use for the gnn", 0, 9, 1,
                          False, 3],
-    "layer_with_gnn_2": ['--layer_with_gnn_2', int, "the layer of the language model to use for the gnn", 0, 9, 1,
+    "layer_with_gnn_2": ['--layer_with_gnn_2', 'int', "the layer of the language model to use for the gnn", 0, 9, 1,
                          False, 5],
-    "layer_with_gnn_3": ['--layer_with_gnn_3', int, "the layer of the language model to use for the gnn", 0, 9, 1,
+    "layer_with_gnn_3": ['--layer_with_gnn_3', 'int', "the layer of the language model to use for the gnn", 0, 9, 1,
                          False, 7],
-    "gnn_topk": ['--gnn_topk', int, "the number of topk nodes to consider for each root node", 1, 3, 1, False, 2],
-    "skip_test": ['--skip_test', bool, "skip the test phase", None, None, None, None, True],
-    "skip_train": ['--skip_train', bool, "skip the train phase", None, None, None, None, False],
-    "optuna_pruner_callback": ['--optuna_pruner_callback', None, "use optuna pruner callback", None, None, None, None, None]
+    "gnn_topk": ['--gnn_topk', 'int', "the number of topk nodes to consider for each root node", 1, 3, 1, False, 2],
+    "skip_test": ['--skip_test', 'bool', "skip the test phase", None, None, None, None, True],
+    "skip_train": ['--skip_train', 'bool', "skip the train phase", None, None, None, None, False],
+    "optuna_pruner_callback": ['--optuna_pruner_callback', None, "use optuna pruner callback", None, None, None, None, None],
+    "checkpoint_sentence_transformer": ['--checkpoint_sentence_transformer',
+                                        'int', "the checkpoint of the sentence transformer to use", 0,
+                                        len(available_sentence_tranformers_checkpoints), 1, False, 0],
+    "reprojection_activation": ['--reprojection_activation', 'int',
+                                "the activation function to use for the reprojection layer", 0,
+                                len(available_reporjection_activations), 1, False, 0],
 }
 
 OPTUNA_FLAG = 'OPTUNA'
 monitor_metric='val_loss'
+
+
 
 
 def load_config_from(config_path):
@@ -46,21 +74,33 @@ def load_config_from(config_path):
 
 
 def objective(trial, args):
-    for k, v in args:
+    pdb.set_trace()
+    args = dict(args)
+    for k, v in args.items():
         if v == OPTUNA_FLAG:
-            if HYPERPARAMS[k][1] == bool:
+            if HYPERPARAMS[k][1] == 'bool':
                 args[k] = trial.suggest_categorical(k, [True, False])
-            elif HYPERPARAMS[k][1] == int:
+            elif HYPERPARAMS[k][1] == 'int':
                 args[k] = trial.suggest_int(k, HYPERPARAMS[k][3], HYPERPARAMS[k][4], step=HYPERPARAMS[k][5])
-            elif HYPERPARAMS[k][1] == float:
+            elif HYPERPARAMS[k][1] == 'float':
                 args[k] = trial.suggest_float(k, HYPERPARAMS[k][3], HYPERPARAMS[k][4], log=HYPERPARAMS[k][6])
     # now I condense the ayer_with_gnn_1, layer_with_gnn_2, layer_with_gnn_3 into a single list named layer_with_gnn
-    args['layer_with_gnn'] = sorted([args['layer_with_gnn_1'], args['layer_with_gnn_2'], args['layer_with_gnn_3']], reverse=True)
+    args['layer_with_gnn'] = sorted([args['layer_with_gnn_1'], args['layer_with_gnn_2'], args['layer_with_gnn_3']])
+    # I remove the -1 from the list
+    args['layer_with_gnn'] = [l for l in args['layer_with_gnn'] if l != -1]
+
     del args['layer_with_gnn_1']
     del args['layer_with_gnn_2']
     del args['layer_with_gnn_3']
 
-    # Now I have to fix the optuna pruner callback
+    # fixing the sentence transformer checkpoint
+    sent_tranf = available_sentence_tranformers_checkpoints[args['checkpoint_sentence_transformer']]
+    args['checkpoint_sentence_transformer'] = sent_tranf[0]
+    args['sentence_transformer_embedding_size'] = sent_tranf[1]
+
+    # fixing the reprojection activation
+    args['reprojection_activation'] = available_reporjection_activations[args['reprojection_activation']]
+
     pruner_callback = PyTorchLightningPruningCallback(trial, monitor=monitor_metric)
     args['optuna_pruner_callback'] = pruner_callback
 
@@ -70,14 +110,20 @@ def objective(trial, args):
 # load config from the first argument
 config = load_config_from(sys.argv[1])
 
+pdb.set_trace()
 study_name=config['study_name']
+number_of_trials = config['number_of_trials']
 sampler = optuna.samplers.TPESampler()
 pruner = optuna.pruners.HyperbandPruner()
 
-study = optuna.load_study(sampler=sampler, pruner=pruner, study_name=study_name, storage="mysql://optuna@localhost/" + str(study_name))
-objfunc = partial(objective, args=config.items(),direction='maximize')
+study = optuna.create_study(direction='maximize', sampler=sampler, pruner=pruner, study_name=study_name, storage=config['mysql_server_url'] + str(study_name), load_if_exists=True )
+del config['study_name']
+del config['number_of_trials']
+del config['mysql_server_url']
+del config['number_of_parallel_jobs']
+
+objfunc = partial(objective, args=config.items())
 
 # I want the optimize catch gpu memory overflow exception
-
-study.optimize(objfunc, n_trials=100, catch=(RuntimeError,), n_jobs=1) # n_jobs=1 is needed to avoid gpu memory overflow
+study.optimize(objfunc, n_trials=number_of_trials, catch=(RuntimeError,), n_jobs=1) # n_jobs=1 is needed to avoid gpu memory overflow
 

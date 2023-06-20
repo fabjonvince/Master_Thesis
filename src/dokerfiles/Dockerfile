@@ -31,6 +31,11 @@ RUN pip install codecarbon sentence_transformers
 RUN pip install wandb keybert wikidata pytorch_lightning
 RUN pip install bert_score
 COPY netrc /root/.netrc
+RUN pip install optuna
+RUN apt-get update -y
+RUN apt-get upgrade -y
+RUN apt-get install default-libmysqlclient-dev -y
+RUN pip install mysqlclient
 
 
 # Back to default frontend

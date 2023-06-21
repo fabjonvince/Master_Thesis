@@ -67,7 +67,6 @@ class GNNQA(pl.LightningModule):
                 gnn_mask=None,
                 rel_mask=None,
                 current_reasoning_path=None,
-                ids_to_nodes=None,
                 memory_embs=None,
                 rels_ids=None,
                 model_lr=None,
@@ -78,7 +77,7 @@ class GNNQA(pl.LightningModule):
 
         output = self.model(input_ids=input_ids, attention_mask=attention_mask, labels=labels, gnn_triplets=gnn_triplets,
                             gnn_mask=gnn_mask, rel_mask=rel_mask, current_reasoning_path=current_reasoning_path,
-                            ids_to_nodes=ids_to_nodes, memory_embs=memory_embs, rels_ids=rels_ids)
+                            memory_embs=memory_embs, rels_ids=rels_ids)
 
         return output.loss, output.logits
 
@@ -117,7 +116,7 @@ class GNNQA(pl.LightningModule):
 
         loss = self(input_ids=input_ids, attention_mask=attention_mask, labels=labels, gnn_triplets=graph,
                     gnn_mask=batch['gnn_mask'], rel_mask=batch['rel_mask'], current_reasoning_path=reasoning_path,
-                    ids_to_nodes=self.ids_to_nodes, memory_embs=self.memory_embs, rels_ids=rels_ids)[0]
+                    memory_embs=self.memory_embs, rels_ids=rels_ids)[0]
 
         self.log('train_loss', loss.item(), on_step=True, on_epoch=True, prog_bar=True)
         return loss
@@ -128,7 +127,6 @@ class GNNQA(pl.LightningModule):
         predictions = self.model.generate(input_ids=input_ids, gnn_triplets=graph,
                                    gnn_mask=batch['gnn_mask'], rel_mask=batch['rel_mask'],
                                    current_reasoning_path=reasoning_path,
-                                   ids_to_nodes=self.ids_to_nodes,
                                    memory_embs=self.memory_embs,
                                    rels_ids=rels_ids, **gen_val_params)
         predictions = [self.tokenizer.decode(predictions[0], skip_special_tokens=True)]
@@ -145,7 +143,6 @@ class GNNQA(pl.LightningModule):
         predictions = self.model.generate(input_ids=input_ids, gnn_triplets=graph,
                                           gnn_mask=batch['gnn_mask'], rel_mask=batch['rel_mask'],
                                           current_reasoning_path=reasoning_path,
-                                          ids_to_nodes=self.ids_to_nodes,
                                           memory_embs=self.memory_embs,
                                           rels_ids=rels_ids, **gen_test_params)
         predictions = [self.tokenizer.decode(predictions[0], skip_special_tokens=True)]

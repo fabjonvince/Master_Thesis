@@ -110,3 +110,13 @@ mysql> show tables;
 ```
 
 You should see several tables created by optuna.
+
+## Run a multi process study with SLURM
+
+Once the database is up, the optuna user can reach and create and alter tables on it, you can run multiple process that perform trails separately and log on the same database.
+In order to run a multi-process study you need:
+
+1. Define the config file in the `./optuna` directory. You can use the `template_study.json` as a template.
+2. Run the script: `run_optuna_study.sh <config_file>`
+
+

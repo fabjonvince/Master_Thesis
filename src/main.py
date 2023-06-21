@@ -88,7 +88,7 @@ def main(args):
     # set device
     device = 'gpu' if torch.cuda.is_available() else 'cpu'
 
-    pdb.set_trace()
+    #pdb.set_trace()
 
     # load tokenizer and add special tokens
     tokenizer = T5Tokenizer.from_pretrained('t5-base')

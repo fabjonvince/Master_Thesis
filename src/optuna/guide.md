@@ -1,4 +1,4 @@
-## Guide for using Optuna
+## Guide for using Optuna with slurm
 
 In order to run an optuna study you need to fill a config file `.json` in the `./optuna` directory.
 The config file should be similar to the `template_study.json`.a
@@ -120,3 +120,8 @@ In order to run a multi-process study you need:
 2. Run the script: `run_optuna_study.sh <config_file>`
 
 
+### Requirements
+
+* Somewhere you need to define a function get_args(default=True) that return a dictionary with the arguments of the main with the default value.
+* Import that function in optuna_integration
+* In optuna integration you need to modify the HYPERPARAMS dictionary with the parameters you want to tune.

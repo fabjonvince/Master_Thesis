@@ -1,8 +1,8 @@
 {
-  "study_name": "optuna_example",
+  "study_name": "complete_lr_study",
   "model_lr": "OPTUNA",
   "gnn_lr": "OPTUNA",
-  "epochs": 2,
+  "epochs": 5,
   "layer_with_gnn_1": 3,
   "layer_with_gnn_2": 5,
   "layer_with_gnn_3": -1,

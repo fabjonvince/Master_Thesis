@@ -71,7 +71,7 @@ def get_args(default=False):
     argparser.add_argument('--reprojection_activation', default='tanh', type=str,
                            choices=available_reporjection_activations, help='gnn batch size')
     if not default:
-        return vars(argparser.parse_args())
+        return argparser.parse_args()
     else:
         return vars(argparser.parse_args([]))
 

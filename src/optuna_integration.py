@@ -89,6 +89,7 @@ def objective(trial, args):
     # now I condense the ayer_with_gnn_1, layer_with_gnn_2, layer_with_gnn_3 into a single list named layer_with_gnn
     args['layer_with_gnn'] = sorted([args['layer_with_gnn_1'], args['layer_with_gnn_2'], args['layer_with_gnn_3']])
     # I remove the -1 from the list
+    pdb.set_trace()
     args['layer_with_gnn'] = [l for l in args['layer_with_gnn'] if l != -1]
 
     del args['layer_with_gnn_1']
@@ -107,9 +108,6 @@ def objective(trial, args):
     args['optuna_pruner_callback'] = pruner_callback
 
     default_args = get_args(default=True)
-
-
-
 
     for k, v in default_args.items():
         if k not in args:

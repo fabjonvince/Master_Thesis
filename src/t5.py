@@ -549,6 +549,7 @@ class T5GNNStack(T5PreTrainedModel):
         layers = list()
         for i in range(config.num_layers):
             if i in config.layer_with_gnn:
+                print('Altering layer {} with GNN'.format(i))
                 layers.append(T5GNNBlock(config, has_relative_attention_bias=bool(i == 0)))
             else:
                 layers.append(T5Block(config, has_relative_attention_bias=bool(i == 0)))

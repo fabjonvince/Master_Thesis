@@ -275,7 +275,7 @@ def main(args):
                 os.makedirs(save_dir)
         else:
             print('Save dir already exists, exiting...')
-            #exit(1)
+            exit(1)
         if not args.dont_save:
             md_checkpoint = ModelCheckpoint(monitor='val_rouge', save_top_k=args.save_top_k, mode='min',
                                             dirpath=save_dir,

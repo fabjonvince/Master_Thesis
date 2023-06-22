@@ -26,7 +26,7 @@ echo "MySQL server url: $mysql_server_url"
 echo "Study created"
 
 
-for i in $(seq 0 $number_of_parallel_jobs); do
+for i in $(seq 1 $number_of_parallel_jobs); do
   ./run_on_sbatch.sh "python optuna_integration.py $config_file"
 done
 

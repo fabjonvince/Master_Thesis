@@ -134,7 +134,7 @@ sampler = optuna.samplers.TPESampler()
 pruner = optuna.pruners.HyperbandPruner()
 
 study = optuna.create_study(direction='maximize', sampler=sampler, pruner=pruner, study_name=study_name,
-                            storage=config['mysql_server_url'] + str(study_name), load_if_exists=True)
+                            storage=config['mysql_server_url'], load_if_exists=True)
 del config['study_name']
 del config['number_of_trials']
 del config['mysql_server_url']

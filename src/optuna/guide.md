@@ -43,6 +43,11 @@ If you want use less gnn layer than three you must disable the layer using -1
 
 All the parameters not specified in the config file will be used with default values.
 
+### Extra parameters
+
+You can add to the config file other main parameters that will be passed to the main function of the script.
+If you want tune parameter you must include it in the HYPERPARAMS dict in the `optuna_integration.py` file.
+
 
 ### Run the study
 

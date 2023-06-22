@@ -5,6 +5,22 @@
 
 ## Installation
 
+1. First you need to clone this repository:
+
+```
+git clone https://....
+
+```
+
+
+2. You need to create the docker image:
+
+```
+cd dockerfiles
+docker build -t qagnn .
+```
+
+
 
 ## Usage
 

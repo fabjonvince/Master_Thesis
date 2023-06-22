@@ -22,9 +22,6 @@ mysql_server_url=$(jq -r '.mysql_server_url' "$config_file")
 echo "Running $number_of_parallel_jobs parallel jobs for study $study_name"
 echo "MySQL server url: $mysql_server_url"
 
-./run_on_docker.sh "optuna create-study --study-name $study_name --storage \"$mysql_server_url$study_name\""
-echo "Study created"
-
 
 for i in $(seq 1 $number_of_parallel_jobs); do
   ./run_on_sbatch.sh "python optuna_integration.py $config_file"

@@ -55,7 +55,7 @@ class GNNQA(pl.LightningModule):
         self.model_lr = model_lr
         self.gnn_lr = gnn_lr
         self.tokenizer = tokenizer
-        self.val_metric = []
+        self.val_metric = {}
         self.test_metrics = {}
         self.save_dir = save_dir
 
@@ -73,7 +73,7 @@ class GNNQA(pl.LightningModule):
                 gnn_lr=None,
                 ):
 
-        print('Forward step')
+        #print('Forward step')
 
         output = self.model(input_ids=input_ids, attention_mask=attention_mask, labels=labels, gnn_triplets=gnn_triplets,
                             gnn_mask=gnn_mask, rel_mask=rel_mask, current_reasoning_path=current_reasoning_path,
@@ -111,7 +111,7 @@ class GNNQA(pl.LightningModule):
         return batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids
 
     def training_step(self, batch, batch_idx):
-        #pdb.set_trace()
+
         batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids = self.prepare_data_from_batch(batch)
 
         loss = self(input_ids=input_ids, attention_mask=attention_mask, labels=labels, gnn_triplets=graph,
@@ -122,6 +122,7 @@ class GNNQA(pl.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
+
         batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids = self.prepare_data_from_batch(batch)
 
         predictions = self.model.generate(input_ids=input_ids, gnn_triplets=graph,
@@ -134,7 +135,32 @@ class GNNQA(pl.LightningModule):
         if len(targets) > 1:
             targets = [targets[0]]
         val_metric = get_rouge_scores(predictions, targets)
-        self.val_metric.append(val_metric['R'])
+        val_bs = get_bert_scores(predictions, targets)
+        for k,v in val_metric.items():
+            if k in self.val_metric:
+                self.val_metric[k].append(v)
+            else:
+                self.val_metric[k] = [v]
+
+        for k,v in val_bs.items():
+            if k in self.val_metric:
+                self.val_metric[k].append(v)
+            else:
+                self.val_metric[k] = [v]
+
+        if not 'question' in self.val_metric:
+            self.val_metric['question'] = []
+        self.val_metric['question'].append(batch['T5_question'])
+        if not 'target_answer' in self.val_metric:
+            self.val_metric['target_answer'] = []
+        self.val_metric['target_answer'].append(targets[0])
+        if not 'predicted_answer' in self.val_metric:
+            self.val_metric['predicted_answer'] = []
+        self.val_metric['predicted_answer'].append(predictions[0])
+        if not 'graph' in self.val_metric:
+            self.val_metric['graph'] = []
+        self.val_metric['graph'].append(self.model.encoder.get_and_clean_reasoning_path().get_all_reasoning_path())
+
         return
 
     def test_step(self, batch, batch_idx):
@@ -187,8 +213,16 @@ class GNNQA(pl.LightningModule):
         self.test_metrics = {}
 
     def on_validation_epoch_end(self):
-        self.log('val_rouge', sum(self.val_metric)/len(self.val_metric))
-        self.val_metric = []
+        for k,v in self.val_metric.items():
+            if not k in ['question', 'target_answer', 'predicted_answer', 'graph']:
+                if k=='R':
+                    self.log('val_rouge', sum(v)/len(v), prog_bar=True)
+                else:
+                    self.log(k, sum(v)/len(v), prog_bar=True)
+        if not self.save_dir is None:
+            table = pd.DataFrame(self.val_metric)
+            table.to_csv(self.save_dir + '/val_e' + str(self.current_epoch) + '.csv', index=False)
+        self.val_metric = {}
 
 
 

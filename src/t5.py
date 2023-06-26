@@ -395,15 +395,11 @@ class CustomGNNLayer(torch.nn.Module):
 
         # Get the indices of ones in gnn_mask
         ones_indices = torch.nonzero(gnn_mask == 1)
-        hidden_states_clone = hidden_states.clone()
         for t, ids in zip(output, ones_indices):
             outs = self.gnn_reprj(t)
             t_exp = torch.zeros_like(hidden_states)
             t_exp[0][ids[1]] = outs
-            hidden_states_clone += t_exp
-
-        hidden_states = torch.autograd.Variable(
-            hidden_states_clone)
+            hidden_states += t_exp
 
         return hidden_states, current_reasoning_path
 

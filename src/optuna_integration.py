@@ -79,13 +79,20 @@ def load_config_from(config_path):
 def objective(trial, args):
     args = dict(args)
     for k, v in args.items():
-        if v == OPTUNA_FLAG:
-            if HYPERPARAMS[k][1] == 'bool':
-                args[k] = trial.suggest_categorical(k, [True, False])
-            elif HYPERPARAMS[k][1] == 'int':
-                args[k] = trial.suggest_int(k, HYPERPARAMS[k][3], HYPERPARAMS[k][4], step=HYPERPARAMS[k][5])
-            elif HYPERPARAMS[k][1] == 'float':
-                args[k] = trial.suggest_float(k, HYPERPARAMS[k][3], HYPERPARAMS[k][4], log=HYPERPARAMS[k][6])
+        if OPTUNA_FLAG in v:
+            if '-' in v:
+                _, minv, maxv = v.split('-')
+                if HYPERPARAMS[k][1] == 'int':
+                    args[k] = trial.suggest_int(k, int(minv), int(maxv), step=HYPERPARAMS[k][5])
+                elif HYPERPARAMS[k][1] == 'float':
+                    args[k] = trial.suggest_float(k, float(minv), float(maxv), log=HYPERPARAMS[k][6])
+            else:
+                if HYPERPARAMS[k][1] == 'bool':
+                    args[k] = trial.suggest_categorical(k, [True, False])
+                elif HYPERPARAMS[k][1] == 'int':
+                    args[k] = trial.suggest_int(k, HYPERPARAMS[k][3], HYPERPARAMS[k][4], step=HYPERPARAMS[k][5])
+                elif HYPERPARAMS[k][1] == 'float':
+                    args[k] = trial.suggest_float(k, HYPERPARAMS[k][3], HYPERPARAMS[k][4], log=HYPERPARAMS[k][6])
     # now I condense the ayer_with_gnn_1, layer_with_gnn_2, layer_with_gnn_3 into a single list named layer_with_gnn
     args['layer_with_gnn'] = sorted([args['layer_with_gnn_1'], args['layer_with_gnn_2'], args['layer_with_gnn_3']])
     # I remove the -1 from the list

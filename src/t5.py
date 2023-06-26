@@ -11,6 +11,16 @@ from transformers.modeling_outputs import Seq2SeqLMOutput, BaseModelOutput, Base
 from transformers.models.t5.modeling_t5 import T5Block, T5LayerNorm, T5LayerSelfAttention, T5LayerFF, \
     T5LayerCrossAttention, T5Stack
 from transformers.utils.model_parallel_utils import get_device_map, assert_device_map
+# chek if torchviz exists otherwise intall it
+try:
+    import torchviz
+except:
+    import subprocess
+    import sys
+    subprocess.check_call([sys.executable, "-m", "pip", "install", 'torchviz'])
+    import torchviz
+
+from torchviz import make_dot
 
 from tools import extract_all_relations_for_a_node, extract_values_from_tensor, find_triplets, AllReasoningPath
 
@@ -392,14 +402,15 @@ class CustomGNNLayer(torch.nn.Module):
                 all_scores.append(mean_emb)
             all_scores = torch.stack(all_scores).mean(dim=0)
             output.append(all_scores)
-        output = torch.stack(output)
-        output = self.gnn_reprj(output)
-        # Now I update the hidden states
-        #pdb.set_trace()
-        hidden_states_clone = hidden_states.clone()  # Create a clone of hidden_states
-        hidden_states_clone[gnn_mask.bool()] += output  # Perform the element-wise addition
-        hidden_states = torch.autograd.Variable(
-            hidden_states_clone)  # Assign the modified clone back to hidden_states
+        _, N, D = hidden_states.shape
+
+        # Get the indices of ones in gnn_mask
+        ones_indices = torch.nonzero(gnn_mask == 1)
+        for t, ids in zip(output, ones_indices):
+            outs = self.gnn_reprj(t)
+            t_exp = torch.zero_like(hidden_states)
+            t_exp[0][id] = t
+            hidden_states = hidden_states + t_exp
 
         return hidden_states, current_reasoning_path
 

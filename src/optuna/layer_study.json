@@ -1,0 +1,14 @@
+{
+  "study_name": "layer_study",
+  "model_lr": "OPTUNA-0.0001-0.05",
+  "gnn_lr": "OPTUNA-0.0000001-0.0001",
+  "max_epochs": 3,
+  "layer_with_gnn_1": "OPTUNA",
+  "layer_with_gnn_2": "OPTUNA",
+  "layer_with_gnn_3": "-1",
+  "gnn_topk":"2",
+  "load_dataset_from": "dataset/eli5_100_100_100_conceptnet",
+  "mysql_server_url": "mysql://optuna@137.204.107.153/optuna_example",
+  "number_of_trials": 10,
+  "number_of_parallel_jobs": 2
+}

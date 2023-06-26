@@ -8,7 +8,7 @@ The config file should be similar to the `template_study.json`.a
   "study_name": "study_name",
   "model_lr": "OPTUNA",
   "gnn_lr": "OPTUNA",
-  "epochs": 3,
+  "max_epochs": 3,
   "layer_with_gnn_1": "OPTUNA",
   "layer_with_gnn_2": "OPTUNA",
   "layer_with_gnn_3": "OPTUNA",

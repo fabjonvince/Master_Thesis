@@ -108,7 +108,7 @@ def get_rouge_scores(references, predictions):
     rouge_scores_final = {key: value.mid.fmeasure * 100 for key, value in rouge_scores.items()}
     rouge_scores_final = {k: round(v, 2) for k, v in rouge_scores_final.items()}
     rouge_scores_final['R1_prec'] = rouge_scores['rouge1'].mid.precision * 100
-    rouge_scores_final['R'] = rouge_scores['rouge1'].mid.recall * 100 + rouge_scores['rouge2'].mid.recall * 100 + rouge_scores['rougeL'].mid.recall * 100 / 3
+    rouge_scores_final['R'] = (rouge_scores['rouge1'].mid.fmeasure * 100 + rouge_scores['rouge2'].mid.fmeasure * 100 + rouge_scores['rougeL'].mid.fmeasure * 100) / 3
     return rouge_scores_final
 
 def get_bert_scores(predictions, references):

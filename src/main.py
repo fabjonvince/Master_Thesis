@@ -20,8 +20,13 @@ from pytorch_lightning import Trainer
 from sentence_transformers import SentenceTransformer
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
+from pytorch_lightning import seed_everything
 
 from pytorch_lightning.loggers import WandbLogger, TensorBoardLogger
+
+torch.manual_seed(42)
+seed_everything(42)
+
 
 
 def get_args(default=False):
@@ -60,7 +65,7 @@ def get_args(default=False):
     argparser.add_argument('--model_lr', default=0.000001, type=float, help='model learning rate')
 
     # GNN Args
-    argparser.add_argument('--layer_with_gnn', type=int, default=[1, 2], help='Layers with KIL')
+    argparser.add_argument('--layer_with_gnn', type=int, nargs='+', default=[1, 2], help='Layers with KIL')
     argparser.add_argument('--gnn_topk', type=int, default=2, help='Number of topk nodes to consider for each root node')
     argparser.add_argument('--checkpoint_sentence_transformer', type=str, default='all-MiniLM-L12-v2',
                            help='Load sentence transformer checkpoint')
@@ -235,10 +240,19 @@ def main(args):
 
         print("In Main")
 
+        if args.train_samples:
+            dataset[train_name] = dataset[train_name].select(range(args.train_samples))
+        if args.val_samples:
+            dataset[val_name] = dataset[val_name].select(range(args.val_samples))
+        if args.test_samples:
+            dataset[test_name] = dataset[test_name].select(range(args.test_samples))
+
         # set total number of rel, nodes and gnn embs size
         setattr(args, 'n_rel', len(dataset['memory_rels'].features))
         setattr(args, 'n_nodes', len(dataset['memory_nodes'].features))
         setattr(args, 'gnn_embs_size', args.sentence_transformer_embedding_size)
+
+
 
 
 
@@ -310,6 +324,7 @@ def main(args):
             'log_every_n_steps': 1,
             'logger': logger,
             'check_val_every_n_epoch': 1,
+            'deterministic': True,
         }
 
         trainer = Trainer(**trainer_args)

@@ -211,7 +211,6 @@ class CustomGNNLayer(torch.nn.Module):
         Returns:
             scores (list of lists): A list of lists containing the final scores for each embedding in each group.
         """
-        #pdb.set_trace()
 
         # Pad the groups to make them equally sized
         max_size = max(len(group) for group in k_nodes)
@@ -402,15 +401,15 @@ class CustomGNNLayer(torch.nn.Module):
                 all_scores.append(mean_emb)
             all_scores = torch.stack(all_scores).mean(dim=0)
             output.append(all_scores)
-        _, N, D = hidden_states.shape
+        #pdb.set_trace()
 
         # Get the indices of ones in gnn_mask
         ones_indices = torch.nonzero(gnn_mask == 1)
         for t, ids in zip(output, ones_indices):
             outs = self.gnn_reprj(t)
-            t_exp = torch.zero_like(hidden_states)
-            t_exp[0][id] = t
-            hidden_states = hidden_states + t_exp
+            t_exp = torch.zeros_like(hidden_states)
+            t_exp[0][ids[1]] = outs
+            hidden_states += t_exp
 
         return hidden_states, current_reasoning_path
 

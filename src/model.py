@@ -111,7 +111,7 @@ class GNNQA(pl.LightningModule):
         return batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids
 
     def training_step(self, batch, batch_idx):
-
+        #pdb.set_trace()
         batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids = self.prepare_data_from_batch(batch)
 
         loss = self(input_ids=input_ids, attention_mask=attention_mask, labels=labels, gnn_triplets=graph,
@@ -122,7 +122,7 @@ class GNNQA(pl.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-
+        #pdb.set_trace()
         batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids = self.prepare_data_from_batch(batch)
 
         predictions = self.model.generate(input_ids=input_ids, gnn_triplets=graph,
@@ -164,6 +164,7 @@ class GNNQA(pl.LightningModule):
         return
 
     def test_step(self, batch, batch_idx):
+        #pdb.set_trace()
         batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids = self.prepare_data_from_batch(batch)
 
         predictions = self.model.generate(input_ids=input_ids, gnn_triplets=graph,

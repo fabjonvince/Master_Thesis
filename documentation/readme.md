@@ -31,6 +31,17 @@ The name of the dataset is generated using this template: `f'dataset/eli5_{args.
 
 ### Training
 
+To run a training you need to run for example the following command:
+
+```
+python main.py --load_dataset_from dataset/eli5_2_2_2_conceptnet/ --no_wand --dont_save
+```
+
+You can run `--help` for further details.
+
+
+#### Optuna
+
 In order to run a optuna study you need to run the following command:
 
 ```
@@ -39,6 +50,8 @@ In order to run a optuna study you need to run the following command:
 ```
 
 See `optuna/guide.md` for further details
+
+
 
 
 ### Testing

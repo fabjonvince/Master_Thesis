@@ -247,7 +247,7 @@ class CustomGNNLayer(torch.nn.Module):
         # print(weighted_attention)
         weighted_attention = weighted_attention.view(*logits.shape)
 
-        weighted_attention[mask == 0] = 0
+        weighted_attention = weighted_attention * mask[:,:, None].float()
         #print("wa", weighted_attention.shape)
 
         return weighted_attention, groups_stacked_tmp

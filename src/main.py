@@ -40,6 +40,8 @@ def get_args(default=False):
     argparser.add_argument('--dont_save', default=False, action='store_true', help='do not save the model')
     argparser.add_argument('--skip_test', default=False, action='store_true', help='skip test')
     argparser.add_argument('--skip_train', default=False, action='store_true', help='skip train')
+    argparser.add_argument('--set_anomaly_detection', default=False, action='store_true', help='set torch.autograd.set_detect_anomaly(True) before main')
+
 
     # Dataset args
     argparser.add_argument('--dataset', type=str, default='eli5', help='Dataset to use')
@@ -75,6 +77,7 @@ def get_args(default=False):
     argparser.add_argument('--gnn_lr', default=None, type=float, help='gnn learning rate')
     argparser.add_argument('--reprojection_activation', default='tanh', type=str,
                            choices=available_reporjection_activations, help='gnn batch size')
+
     if not default:
         return argparser.parse_args()
     else:
@@ -340,4 +343,8 @@ def main(args):
 
 if __name__ == '__main__':
     args = get_args()
-    main(args)
+    if args.set_anomaly_detection:
+        with torch.autograd.set_detect_anomaly(True):
+            main(args)
+    else:
+        main(args)

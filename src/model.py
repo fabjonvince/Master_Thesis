@@ -74,7 +74,7 @@ class GNNQA(pl.LightningModule):
                 ):
 
         #print('Forward step')
-
+        #with torch.autograd.set_detect_anomaly(True):
         output = self.model(input_ids=input_ids, attention_mask=attention_mask, labels=labels, gnn_triplets=gnn_triplets,
                             gnn_mask=gnn_mask, rel_mask=rel_mask, current_reasoning_path=current_reasoning_path,
                             memory_embs=memory_embs, rels_ids=rels_ids)

@@ -79,7 +79,8 @@ def load_config_from(config_path):
 def objective(trial, args):
     args = dict(args)
     for k, v in args.items():
-        if OPTUNA_FLAG in v:
+        # check if v is a string and then if optuna flag is present
+        if isinstance(v, str) and OPTUNA_FLAG in v:
             if '-' in v:
                 _, minv, maxv = v.split('-')
                 if HYPERPARAMS[k][1] == 'int':

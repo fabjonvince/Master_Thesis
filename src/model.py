@@ -86,13 +86,13 @@ class GNNQA(pl.LightningModule):
         #pdb.set_trace()
 
         toks = \
-            self.tokenizer(batch['T5_question'], padding='max_length', truncation=True, max_length=128,
+            self.tokenizer(batch['T5_question'], padding=True, truncation=True, max_length=128,
                            return_tensors='pt').to(self.device)
         input_ids, attention_mask = toks['input_ids'], toks['attention_mask']
         answer = batch['answers']['text']
         if len(answer) > 1:
             answer = [answer[0]]
-        labels = self.tokenizer(answer, padding='max_length', truncation=True, max_length=512, return_tensors='pt')[
+        labels = self.tokenizer(answer, padding=True, truncation=True, return_tensors='pt')[
             'input_ids'].to(self.device)
         # labels = tensor(labels, dtype=torch.long)
         graph = batch['graph'] # the graph contain the path to the file containing the graph
@@ -113,6 +113,12 @@ class GNNQA(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         #pdb.set_trace()
         batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids = self.prepare_data_from_batch(batch)
+        print('step ' + str(batch_idx))
+        print('input_ids', input_ids)
+        print('attention_mask', attention_mask)
+        print(self.tokenizer.decode(input_ids[0], skip_special_tokens=True))
+        print('labels', labels)
+        print(self.tokenizer.decode(labels[0], skip_special_tokens=True))
 
         loss = self(input_ids=input_ids, attention_mask=attention_mask, labels=labels, gnn_triplets=graph,
                     gnn_mask=batch['gnn_mask'], rel_mask=batch['rel_mask'], current_reasoning_path=reasoning_path,
@@ -232,7 +238,7 @@ class GNNQA(pl.LightningModule):
         if self.gnn_lr:
             gnn_parameters = []
             model_parameters = []
-            layers = ['encoder.block.{}.'.format(i) for i in self.gnn_layers]
+            layers = ['encoder.block.{}.layer.2'.format(i) for i in self.gnn_layers]
             for k,v in self.model.named_parameters():
                 if any(x in k for x in layers):
                     print('GNN Layer added to second optimizer', k, v.shape)

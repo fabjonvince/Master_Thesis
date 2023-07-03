@@ -39,7 +39,9 @@ class GNNQA(pl.LightningModule):
                  save_dir=None,
                  model_lr=None,
                  gnn_lr=None,
-                 gnn_layers=None):
+                 gnn_layers=None,
+                 labels=None,
+                 ):
         super().__init__()
         if gnn_layers is None:
             gnn_layers = []
@@ -58,6 +60,7 @@ class GNNQA(pl.LightningModule):
         self.val_metric = {}
         self.test_metrics = {}
         self.save_dir = save_dir
+        self.labels = labels
 
     def forward(self,
                 input_ids,
@@ -89,7 +92,7 @@ class GNNQA(pl.LightningModule):
             self.tokenizer(batch['T5_question'], padding=True, truncation=True, max_length=128,
                            return_tensors='pt').to(self.device)
         input_ids, attention_mask = toks['input_ids'], toks['attention_mask']
-        answer = batch['answers']['text']
+        answer = batch[self.labels]
         if len(answer) > 1:
             answer = [answer[0]]
         labels = self.tokenizer(answer, padding=True, truncation=True, return_tensors='pt')[

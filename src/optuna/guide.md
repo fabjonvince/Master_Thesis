@@ -1,7 +1,7 @@
 ## Guide for using Optuna with slurm
 
 In order to run an optuna study you need to fill a config file `.json` in the `./optuna` directory.
-The config file should be similar to the `template_study.json`.a
+The config file should be similar to the `template_study.json`.
 
 ```
 {
@@ -21,7 +21,19 @@ The config file should be similar to the `template_study.json`.a
 }
 ```
 
-### In depth
+Then you can run the study from the `src` directory with the following command:
+
+```
+optuna/run_optuna_study_using_slurm.sh optuna/<CONFIG>.json
+```
+
+In this way the optuna will run `number_of_trials` trials in parallel, each one with `number_of_parallel_jobs` parallel jobs.
+The results will be stored in the mysql server at the url `mysql_server_url`.
+
+NB. You must setup the mysql server before running the study. See the section below.
+
+### The config file
+#### In depth
 
 * `study_name`: name of the study
 * `model_lr`: learning rate for the summarizer model
@@ -39,23 +51,30 @@ The config file should be similar to the `template_study.json`.a
 
 The value `OPTUNA` means the optuna will decide and tune that parameters.
 
+The value `OPTUNA-N-K` means that optuna will tune that parameter in the range [N, K]. It supports float and int values.
+
 If you want use less gnn layer than three you must disable the layer using -1
 
 All the parameters not specified in the config file will be used with default values.
 
-### Extra parameters
+All parameters of the main can e specified in this file, but can not be trained using OPTUNA flags
+
+
+#### Extra parameters
 
 You can add to the config file other main parameters that will be passed to the main function of the script.
 If you want tune parameter you must include it in the HYPERPARAMS dict in the `optuna_integration.py` file.
 
 
-### Run the study
+### Run the study without SLURM
 
 To run the study you need to run the following command:
 
 ```
 python3 optuna_integration.py --config_file ./optuna/study_name.json
 ```
+
+NB. For this case you dont need the mysql running.
 
 
 ### The mysql server
@@ -93,7 +112,13 @@ mysql -u optuna -h 137.204.107.153
 
 You should be able to log into the mysql server running on the host.
 
-### Run the study within docker
+You should be able to access the database from all the hosts in the network.
+
+NB. This implementation does not support login with password and can lead to security breaches. It is not recommended to use this configuration in production.
+
+### Run the study within SLURM
+
+The following few lines are NOT NECESSARY because `optuna_integration.py` creates the dataset automatically.
 
 Once the mysql server is up, you should create an optuna distributed study. You can do it running this command:
 ```
@@ -116,7 +141,9 @@ mysql> show tables;
 
 You should see several tables created by optuna.
 
-## Run a multi process study with SLURM
+NB. The current implementation automatically creates the database if it does not exist otherwise it loads the existing one.
+
+#### Run a multi process study with SLURM
 
 Once the database is up, the optuna user can reach and create and alter tables on it, you can run multiple process that perform trails separately and log on the same database.
 In order to run a multi-process study you need:
@@ -124,9 +151,28 @@ In order to run a multi-process study you need:
 1. Define the config file in the `./optuna` directory. You can use the `template_study.json` as a template.
 2. Run the script: `run_optuna_study.sh <config_file>`
 
+NB. In order to work with the current project you must lunch the study from the `src` directory.
+```
+cd src;
+./optuna/run_optuna_study.sh ./optuna/<CONFIG>.json
+```
+
 
 ### Requirements
 
 * Somewhere you need to define a function get_args(default=True) that return a dictionary with the arguments of the main with the default value.
 * Import that function in optuna_integration
 * In optuna integration you need to modify the HYPERPARAMS dictionary with the parameters you want to tune.
+
+
+### Checklist
+
+Before running a study with SLURM you should check:
+
+1. The mysql server is up and running
+2. You can reach the mysql server from hosts you want to run the study
+`mysql -u optuna -h <HOSTIP>`
+3. You are in the `src` directory
+4. You have defined the `<CONFIG>.json` file in the `./optuna` directory
+5. You can use SLURM
+

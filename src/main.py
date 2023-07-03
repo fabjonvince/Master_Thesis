@@ -85,7 +85,7 @@ def get_args(default=False):
         return vars(argparser.parse_args([]))
 
 name_mapping = {
-    "eli5": ("train_eli5", "validation_eli5", "test_eli5", "title", "[answers][text]"),
+    "eli5": ("train_eli5", "validation_eli5", "test_eli5", "title", "answers,text"),
     "conceptnet": ("rel", "arg1", "arg2"),
     "din0s/msmarco-nlgen": ("train", "dev", "test", "query", "answers"),
     "aquamuse": ("train", "validation", "test", "query", "target"),
@@ -124,10 +124,7 @@ def main(args):
         # directory where to save the dataset
         save_dir = f'dataset/{args.dataset}_{args.train_samples}_{args.val_samples}_{args.test_samples}_conceptnet_{args.keyword_extraction_method}'
         # get the original dataset
-        if args.dataset == 'aquamuse':
-            dataset = get_dataset(args.dataset, 'abstractive') # val = 661, test = 811
-        else:
-            dataset = get_dataset(args.dataset)
+        dataset = get_dataset(args.dataset)
 
         if args.dataset == 'din0s/msmarco-nlgen':
             new_set = dataset['train'].train_test_split(test_size=5000)

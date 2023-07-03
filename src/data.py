@@ -19,5 +19,9 @@ def get_dataset(dataset_name: str):
             loaded_datasets[dataset_name] = load_dataset("natural_questions")
         elif dataset_name == 'conceptnet':
             loaded_datasets[dataset_name] = load_dataset("peandrew/conceptnet_en_nomalized")
+        elif dataset_name == 'din0s/msmarco-nlgen':
+            loaded_datasets[dataset_name] = load_dataset("din0s/msmarco-nlgen")
+        elif dataset_name == 'aquamuse':
+            loaded_datasets[dataset_name] = load_dataset("aquamuse", "abstractive")
 
         return loaded_datasets[dataset_name]

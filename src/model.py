@@ -92,7 +92,10 @@ class GNNQA(pl.LightningModule):
             self.tokenizer(batch['T5_question'], padding=True, truncation=True, max_length=128,
                            return_tensors='pt').to(self.device)
         input_ids, attention_mask = toks['input_ids'], toks['attention_mask']
-        answer = batch[self.labels]
+        if len(self.labels.split(',')) > 1:
+            answer = batch[self.labels.split(',')[0]][self.labels.split(',')[1]]
+        else:
+            answer = batch[self.labels]
         if len(answer) > 1:
             answer = [answer[0]]
         labels = self.tokenizer(answer, padding=True, truncation=True, return_tensors='pt')[
@@ -116,12 +119,6 @@ class GNNQA(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         #pdb.set_trace()
         batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids = self.prepare_data_from_batch(batch)
-        print('step ' + str(batch_idx))
-        print('input_ids', input_ids)
-        print('attention_mask', attention_mask)
-        print(self.tokenizer.decode(input_ids[0], skip_special_tokens=True))
-        print('labels', labels)
-        print(self.tokenizer.decode(labels[0], skip_special_tokens=True))
 
         loss = self(input_ids=input_ids, attention_mask=attention_mask, labels=labels, gnn_triplets=graph,
                     gnn_mask=batch['gnn_mask'], rel_mask=batch['rel_mask'], current_reasoning_path=reasoning_path,

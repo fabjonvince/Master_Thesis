@@ -1,14 +1,15 @@
 {
-  "study_name": "study_3_layer",
-  "model_lr": "OPTUNA",
-  "gnn_lr": "OPTUNA",
-  "epochs": 3,
+  "study_name": "study_3_layers",
+  "model_lr": "OPTUNA-0.000001-0.0001",
+  "gnn_lr": "OPTUNA-0.000001-0.0001",
+  "max_epochs": 3,
   "layer_with_gnn_1": "OPTUNA",
   "layer_with_gnn_2": "OPTUNA",
   "layer_with_gnn_3": "OPTUNA",
-  "gnn_topk":"OPTUNA",
-  "load_dataset_from": "dataset/eli5_2_2_2_conceptnet",
+  "gnn_topk":2,
+  "load_dataset_from": "dataset/eli5_1000_1000_1000_conceptnet",
+  "val_samples": 10,
   "mysql_server_url": "mysql://optuna@137.204.107.153/optuna_example",
-  "number_of_trials": 10,
+  "number_of_trials": 5,
   "number_of_parallel_jobs": 4
 }

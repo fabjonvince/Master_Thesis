@@ -1,5 +1,5 @@
 {
-  "study_name": "lr_study2",
+  "study_name": "lr_study",
   "model_lr": "OPTUNA",
   "gnn_lr": "OPTUNA",
   "max_epochs": 3,
@@ -7,7 +7,7 @@
   "layer_with_gnn_2": 5,
   "layer_with_gnn_3": -1,
   "gnn_topk":2,
-  "load_dataset_from": "dataset/eli5_100_100_100_conceptnet",
+  "load_dataset_from": "dataset/eli5_1000_1000_1000_conceptnet",
   "val_samples": 10,
   "mysql_server_url": "mysql://optuna@137.204.107.153/optuna_example",
   "number_of_trials": 20,

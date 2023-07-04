@@ -46,6 +46,7 @@ NB. You must setup the mysql server before running the study. See the section be
 * `checkpoint_sentence_transformer`: checkpoint for the sentence transformer to encode the node and edges of the graph
 * `reprojection_activation`: activation function for the reprojection layers in the gnn
 * `mysql_server_url`: url of the mysql server
+* `accumulate_grad_batches`: accumulation gradient batches
 * `number_of_trials`: number of trials for any job in the study
 * `number_of_parallel_jobs`: number of parallel jobs for the study (total number of trials will be number_of_trials * number_of_jobs trials)
 

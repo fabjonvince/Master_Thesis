@@ -1,6 +1,11 @@
 import pdb
 import re
 import pickle
+import yake
+import nltk
+from rake_nltk import Rake
+nltk.download('stopwords')
+nltk.download('punkt')
 
 import numpy as np
 import os
@@ -88,11 +93,22 @@ def text_to_graph_concept(
         row_id,
         nodes_dict,
         rels_dict,
+        args,
 ):
 
-    kw_model = KeyBERT()
-    kw = kw_model.extract_keywords(text)
-    kw = [kw[i][0].lower() for i in range(len(kw))]
+    if args.keyword_extraction_method == 'jake':
+        kw_model = Rake()
+        kw_model.extract_keywords_from_text(text)
+        kw = kw_model.get_ranked_phrases()
+        kw = [kw[i].lower() for i in range(len(kw))]
+    else:
+        if args.keyword_extraction_method == 'yake':
+            kw_model = yake.KeywordExtractor()
+        else:
+            kw_model = KeyBERT()
+        kw = kw_model.extract_keywords(text)
+        kw = [kw[i][0].lower() for i in range(len(kw))]
+
     kw = np.unique(kw)
     txt = kw
 

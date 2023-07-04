@@ -50,6 +50,7 @@ def get_args(default=False):
     argparser.add_argument('--val_samples', type=int, default=None, help='Number of validation samples')
     argparser.add_argument('--test_samples', type=int, default=None, help='Number of test samples')
     argparser.add_argument('--graph_depth', type=int, default=3, help='Graph depth')
+    argparser.add_argument('--keyword_extraction_method', type=str, default='bert', help='kw extraction method')
 
 
     # Training args
@@ -84,8 +85,10 @@ def get_args(default=False):
         return vars(argparser.parse_args([]))
 
 name_mapping = {
-    "eli5": ("train_eli5", "validation_eli5", "test_eli5", "title", "answers"),
+    "eli5": ("train_eli5", "validation_eli5", "test_eli5", "title", "answers,text"),
     "conceptnet": ("rel", "arg1", "arg2"),
+    "din0s/msmarco-nlgen": ("train", "dev", "test", "query", "answers"),
+    "aquamuse": ("train", "validation", "test", "query", "target"),
 }
 
 
@@ -116,10 +119,17 @@ def main(args):
 
     else:
 
+        if args.keyword_extraction_method != 'yake' and args.keyword_extraction_method != 'rake':
+            args.keyword_extraction_method = 'bert'
         # directory where to save the dataset
-        save_dir = f'dataset/eli5_{args.train_samples}_{args.val_samples}_{args.test_samples}_conceptnet'
+        save_dir = f'dataset/{args.dataset}_{args.train_samples}_{args.val_samples}_{args.test_samples}_conceptnet_{args.keyword_extraction_method}'
         # get the original dataset
         dataset = get_dataset(args.dataset)
+
+        if args.dataset == 'din0s/msmarco-nlgen':
+            new_set = dataset['train'].train_test_split(test_size=5000)
+            dataset[train_name] = new_set['train']
+            dataset[test_name] = new_set['test']
 
         # get all the nodes and relations from the graph and create a dictionary with value and ID (index)
         nodes, rels = get_node_and_rel_dict()
@@ -148,7 +158,7 @@ def main(args):
 
         dataset[train_name] = dataset[train_name].map(
             lambda example: text_to_graph_concept(args.graph_depth, example[question_name], save_dir + '/graphs/',
-                                               'train' + str(example['row_id']), nodes_dict, rels_dict),
+                                               'train' + str(example['row_id']), nodes_dict, rels_dict, args),
             load_from_cache_file=False)
 
         dataset[train_name] = dataset[train_name].map(
@@ -170,7 +180,7 @@ def main(args):
 
         dataset[val_name] = dataset[val_name].map(
             lambda example:text_to_graph_concept(args.graph_depth, example[question_name], save_dir + '/graphs/',
-                                                 'val' + str(example['row_id']), nodes_dict, rels_dict),
+                                                 'val' + str(example['row_id']), nodes_dict, rels_dict, args),
             load_from_cache_file=False)
 
         dataset[val_name] = dataset[val_name].map(
@@ -192,7 +202,7 @@ def main(args):
 
         dataset[test_name] = dataset[test_name].map(
             lambda example: text_to_graph_concept(args.graph_depth, example[question_name], save_dir + '/graphs/',
-                                               'test' + str(example['row_id']), nodes_dict, rels_dict),
+                                               'test' + str(example['row_id']), nodes_dict, rels_dict, args),
             load_from_cache_file=False)
 
         dataset[test_name] = dataset[test_name].map(
@@ -213,12 +223,12 @@ def main(args):
 
         print('dropping empty graphs')
         dataset[train_name] = dataset[train_name].filter(lambda row: '<REL_TOK>' in row['question'])
-        dataset[test_name] = dataset[test_name].filter(lambda row: '<REL_TOK>' in row['question'])
         dataset[val_name] = dataset[val_name].filter(lambda row: '<REL_TOK>' in row['question'])
+        dataset[test_name] = dataset[test_name].filter(lambda row: '<REL_TOK>' in row['question'])
         print('Now the lengths of the datasets are as follows:')
         print(len(dataset[train_name]))
-        print(len(dataset[test_name]))
         print(len(dataset[val_name]))
+        print(len(dataset[test_name]))
 
         print('creating nodes and rels embeddings')
         # Load a pretrained model with all-MiniLM-L12-v2 checkpoint
@@ -313,13 +323,13 @@ def main(args):
                                                                   device_map='auto')
         gnnqa = GNNQA(model=model, ids_to_rels=rels, ids_to_nodes=nodes,
                       memory_embs=dataset['memory_nodes'].to_dict(), tokenizer=tokenizer, save_dir=save_dir,
-                      model_lr=args.model_lr, gnn_lr=args.gnn_lr, gnn_layers=args.layer_with_gnn)
+                      model_lr=args.model_lr, gnn_lr=args.gnn_lr, gnn_layers=args.layer_with_gnn, labels=answers_name)
 
         # create T5 question for each example
         dataset[train_name] = dataset[train_name].map(
             lambda example: {'T5_question': 'question: ' + example['question']})
-        dataset[test_name] = dataset[test_name].map(lambda example: {'T5_question': 'question: ' + example['question']})
         dataset[val_name] = dataset[val_name].map(lambda example: {'T5_question': 'question: ' + example['question']})
+        dataset[test_name] = dataset[test_name].map(lambda example: {'T5_question': 'question: ' + example['question']})
 
         trainer_args = {
             'max_epochs': args.max_epochs,

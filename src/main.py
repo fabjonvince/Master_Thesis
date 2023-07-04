@@ -307,7 +307,10 @@ def main(args):
         rels = {i: word for i, word in enumerate(dataset['memory_rels'].features)}
 
         # model creation
-        model = T5GNNForConditionalGeneration.from_pretrained(args.checkpoint_summarizer, args)
+        if args.checkpoint_summarizer in ['t5-small', 't5-base', 't5-large', 't5-3b', 't5-11b']:
+            model = T5GNNForConditionalGeneration.from_pretrained(args.checkpoint_summarizer,
+                                                                  load_in_8bits=args.checkpoint_summarizer in ['t5-3b', 't5-11b'],
+                                                                  device_map='auto')
         gnnqa = GNNQA(model=model, ids_to_rels=rels, ids_to_nodes=nodes,
                       memory_embs=dataset['memory_nodes'].to_dict(), tokenizer=tokenizer, save_dir=save_dir,
                       model_lr=args.model_lr, gnn_lr=args.gnn_lr, gnn_layers=args.layer_with_gnn)

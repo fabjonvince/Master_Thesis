@@ -1,15 +1,16 @@
 {
-  "study_name": "study_3_layers",
+  "study_name": "study_grad_accumulation",
   "model_lr": "OPTUNA-0.000001-0.0001",
   "gnn_lr": "OPTUNA-0.000001-0.0001",
   "max_epochs": 3,
-  "layer_with_gnn_1": "OPTUNA",
-  "layer_with_gnn_2": "OPTUNA",
-  "layer_with_gnn_3": "OPTUNA",
+  "layer_with_gnn_1": 2,
+  "layer_with_gnn_2": 7,
+  "layer_with_gnn_3": -1,
   "gnn_topk":2,
   "load_dataset_from": "dataset/eli5_1000_1000_1000_conceptnet",
   "val_samples": 10,
   "mysql_server_url": "mysql://optuna@137.204.107.153/optuna_example",
+  "accumulate_grad_batches": "OPTUNA",
   "number_of_trials": 3,
-  "number_of_parallel_jobs": 8
+  "number_of_parallel_jobs": 5
 }

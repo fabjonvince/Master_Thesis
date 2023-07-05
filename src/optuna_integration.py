@@ -34,12 +34,12 @@ HYPERPARAMS = {
     "epochs": ['--epochs', 'int', "the number of epochs of the language model", 1, 5, 1, False, 3],
     "gnn_lr": ['--gnn_lr', 'float', "the learning rate of the gnn model", 0.0000001, 0.01, None, True, 0.00005],
     "layer_with_gnn_1": ['--layer_with_gnn_1', 'int', "the layer of the language model to use for the gnn", 0, 12, 1,
-                         False, 3],
+                         False, 2],
     "layer_with_gnn_2": ['--layer_with_gnn_2', 'int', "the layer of the language model to use for the gnn", 0, 12, 1,
-                         False, 5],
-    "layer_with_gnn_3": ['--layer_with_gnn_3', 'int', "the layer of the language model to use for the gnn", 0, 12, 1,
                          False, 7],
-    "gnn_topk": ['--gnn_topk', 'int', "the number of topk nodes to consider for each root node", 1, 3, 1, False, 2],
+    "layer_with_gnn_3": ['--layer_with_gnn_3', 'int', "the layer of the language model to use for the gnn", 0, 12, 1,
+                         False, 12],
+    "gnn_topk": ['--gnn_topk', 'int', "the number of topk nodes to consider for each root node", 1, 6, 1, False, 2],
     "optuna_pruner_callback": ['--optuna_pruner_callback', None, "use optuna pruner callback", None, None, None, None,
                                None],
     "checkpoint_sentence_transformer": ['--checkpoint_sentence_transformer',
@@ -48,6 +48,8 @@ HYPERPARAMS = {
     "reprojection_activation": ['--reprojection_activation', 'int',
                                 "the activation function to use for the reprojection layer", 0,
                                 len(available_reporjection_activations), 1, False, 0],
+    "accumulate_grad_batches": ['--accumulate_grad_batches', 'int', "the number of batches to accumulate gradients",
+                                1, 24, 2, False, 8],
 }
 
 OPTUNA_FLAG = 'OPTUNA'

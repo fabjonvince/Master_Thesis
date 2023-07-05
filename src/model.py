@@ -137,9 +137,13 @@ class GNNQA(pl.LightningModule):
                                    memory_embs=self.memory_embs,
                                    rels_ids=rels_ids, **gen_val_params)
         predictions = [self.tokenizer.decode(predictions[0], skip_special_tokens=True)]
-        targets = batch['answers']['text']
+        if len(self.labels.split(',')) > 1:
+            targets = batch[self.labels.split(',')[0]][self.labels.split(',')[1]]
+        else:
+            targets = batch[self.labels]
         if len(targets) > 1:
             targets = [targets[0]]
+
         val_metric = get_rouge_scores(predictions, targets)
         val_bs = get_bert_scores(predictions, targets)
         for k,v in val_metric.items():
@@ -179,9 +183,13 @@ class GNNQA(pl.LightningModule):
                                           memory_embs=self.memory_embs,
                                           rels_ids=rels_ids, **gen_test_params)
         predictions = [self.tokenizer.decode(predictions[0], skip_special_tokens=True)]
-        targets = batch['answers']['text']
+        if len(self.labels.split(',')) > 1:
+            targets = batch[self.labels.split(',')[0]][self.labels.split(',')[1]]
+        else:
+            targets = batch[self.labels]
         if len(targets) > 1:
             targets = [targets[0]]
+
         test_metric = get_rouge_scores(predictions, targets)
         test_bs = get_bert_scores(predictions, targets)
         for k,v in test_metric.items():

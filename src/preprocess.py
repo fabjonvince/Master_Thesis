@@ -34,8 +34,11 @@ def add_special_tokens(
 ):
     new_question = question
     for word in kw:
-        idx = re.search(r"\b({})\b".format(word), new_question, re.IGNORECASE).start()
-        new_question = new_question[:idx] + "<REL_TOK><GNN_TOK>" + new_question[idx:]
+        idx = re.search(r"\b({})\b".format(word), new_question, re.IGNORECASE)
+        if idx is not None:
+            idx = idx.start()
+            new_question = new_question[:idx] + "<REL_TOK><GNN_TOK>" + new_question[idx:]
+
 
     return new_question
 

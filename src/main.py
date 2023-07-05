@@ -15,6 +15,7 @@ from preprocess import text_to_graph_concept, add_special_tokens, create_memory,
     graph_to_nodes_and_rel, get_node_and_rel_dict
 from data import get_dataset
 from model import GNNQA
+from bart import BartGNNForConditionalGeneration
 from t5 import T5GNNForConditionalGeneration, available_reporjection_activations
 from pytorch_lightning import Trainer
 from sentence_transformers import SentenceTransformer
@@ -54,6 +55,7 @@ def get_args(default=False):
 
 
     # Training args
+    argparser.add_argument('--model_method', type=str, default='t5', help='Model method')
     argparser.add_argument('--accumulate_grad_batches', type=int, default=8,
                            help='Number of batches to accumulate gradients')
     argparser.add_argument('--load_dataset_from', type=str, default=None, help='Load dataset from path')
@@ -317,7 +319,10 @@ def main(args):
         rels = {i: word for i, word in enumerate(dataset['memory_rels'].features)}
 
         # model creation
-        model = T5GNNForConditionalGeneration.from_pretrained(args.checkpoint_summarizer, args)
+        if args.model_method == 'bart':
+            model = BartGNNForConditionalGeneration.from_pretrained(args.checkpoint_summarizer, args)
+        else:
+            model = T5GNNForConditionalGeneration.from_pretrained(args.checkpoint_summarizer, args)
         gnnqa = GNNQA(model=model, ids_to_rels=rels, ids_to_nodes=nodes,
                       memory_embs=dataset['memory_nodes'].to_dict(), tokenizer=tokenizer, save_dir=save_dir,
                       model_lr=args.model_lr, gnn_lr=args.gnn_lr, gnn_layers=args.layer_with_gnn, labels=answers_name)

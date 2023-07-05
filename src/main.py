@@ -251,114 +251,113 @@ def main(args):
 
     print('dataset loaded')
 
-    if not args.skip_train:
+    print("In Main")
 
-        print("In Main")
+    if args.train_samples:
+        dataset[train_name] = dataset[train_name].select(range(args.train_samples))
+    if args.val_samples:
+        dataset[val_name] = dataset[val_name].select(range(args.val_samples))
+    if args.test_samples:
+        dataset[test_name] = dataset[test_name].select(range(args.test_samples))
 
-        if args.train_samples:
-            dataset[train_name] = dataset[train_name].select(range(args.train_samples))
-        if args.val_samples:
-            dataset[val_name] = dataset[val_name].select(range(args.val_samples))
-        if args.test_samples:
-            dataset[test_name] = dataset[test_name].select(range(args.test_samples))
-
-        # set total number of rel, nodes and gnn embs size
-        setattr(args, 'n_rel', len(dataset['memory_rels'].features))
-        setattr(args, 'n_nodes', len(dataset['memory_nodes'].features))
-        setattr(args, 'gnn_embs_size', args.sentence_transformer_embedding_size)
+    # set total number of rel, nodes and gnn embs size
+    setattr(args, 'n_rel', len(dataset['memory_rels'].features))
+    setattr(args, 'n_nodes', len(dataset['memory_nodes'].features))
+    setattr(args, 'gnn_embs_size', args.sentence_transformer_embedding_size)
 
 
 
 
 
-        # Next I take the date in gg_mm_yyyy format
-        date_ = datetime.now().strftime("%d_%m_%Y")
-        run_name = date_
-        if not args.no_gnn:
-            run_name += '_gnn'
-        run_name += '_' + str(args.checkpoint_summarizer)
-        if args.run_info:
-            run_name += '_' + args.run_info
+    # Next I take the date in gg_mm_yyyy format
+    date_ = datetime.now().strftime("%d_%m_%Y")
+    run_name = date_
+    if not args.no_gnn:
+        run_name += '_gnn'
+    run_name += '_' + str(args.checkpoint_summarizer)
+    if args.run_info:
+        run_name += '_' + args.run_info
 
-        # set wandb logger
-        if not args.no_wandb:
-            logger = WandbLogger(
-                name=run_name,
-                project=args.wandb_project,
-            )
-        else:
-            logger = TensorBoardLogger(
-                save_dir='logs/',
-                name=run_name,
-            )
+    # set wandb logger
+    if not args.no_wandb:
+        logger = WandbLogger(
+            name=run_name,
+            project=args.wandb_project,
+        )
+    else:
+        logger = TensorBoardLogger(
+            save_dir='logs/',
+            name=run_name,
+        )
 
-        # set callbacks
-        callbacks = []
-        early_stopper = EarlyStopping(monitor='val_rouge', patience=args.patience, mode='min')
-        callbacks.append(early_stopper)
-        callbacks.append(LearningRateMonitor(logging_interval='epoch'))
-        save_dir = 'checkpoints/' + run_name
-        # check the save dir not exists and create it
-        if not os.path.exists(save_dir):
-            if not args.dont_save:
-                os.makedirs(save_dir)
-        else:
-            if not args.dont_save:
-                print('Save dir already exists, exiting...')
-                exit(1)
+    # set callbacks
+    callbacks = []
+    early_stopper = EarlyStopping(monitor='val_rouge', patience=args.patience, mode='min')
+    callbacks.append(early_stopper)
+    callbacks.append(LearningRateMonitor(logging_interval='epoch'))
+    save_dir = 'checkpoints/' + run_name
+    # check the save dir not exists and create it
+    if not os.path.exists(save_dir):
         if not args.dont_save:
-            md_checkpoint = ModelCheckpoint(monitor='val_rouge', save_top_k=args.save_top_k, mode='min',
-                                            dirpath=save_dir,
-                                            filename='gnnqa-{epoch:02d}-{val_loss:.2f}')
-            callbacks.append(md_checkpoint)
-        else:
-            save_dir = None
+            os.makedirs(save_dir)
+    else:
+        if not args.dont_save:
+            print('Save dir already exists, exiting...')
+            exit(1)
+    if not args.dont_save:
+        md_checkpoint = ModelCheckpoint(monitor='val_rouge', save_top_k=args.save_top_k, mode='min',
+                                        dirpath=save_dir,
+                                        filename='gnnqa-{epoch:02d}-{val_loss:.2f}')
+        callbacks.append(md_checkpoint)
+    else:
+        save_dir = None
 
-        # create dict with ID and word for each nodes and rels
-        nodes = {i: word for i, word in enumerate(dataset['memory_nodes'].features)}
-        rels = {i: word for i, word in enumerate(dataset['memory_rels'].features)}
+    # create dict with ID and word for each nodes and rels
+    nodes = {i: word for i, word in enumerate(dataset['memory_nodes'].features)}
+    rels = {i: word for i, word in enumerate(dataset['memory_rels'].features)}
 
-        # model creation
-        if args.model_method == 'bart':
-            model = BartGNNForConditionalGeneration.from_pretrained(args.checkpoint_summarizer, args)
-        else:
-            if args.checkpoint_summarizer in ['t5-small', 't5-base', 't5-large']:
-                model = T5GNNForConditionalGeneration.from_pretrained(args.checkpoint_summarizer, args=args)
-            if args.checkpoint_summarizer in ['t5-3b', 't5-11b']:
-                model = T5GNNForConditionalGeneration.from_pretrained(args.checkpoint_summarizer,
-                                                                      load_in_8bit=True, device_map='auto',
-                                                                      args=args)
+    # model creation
+    if args.model_method == 'bart':
+        model = BartGNNForConditionalGeneration.from_pretrained(args.checkpoint_summarizer, args)
+    else:
+        if args.checkpoint_summarizer in ['t5-small', 't5-base', 't5-large']:
+            model = T5GNNForConditionalGeneration.from_pretrained(args.checkpoint_summarizer, args=args)
+        if args.checkpoint_summarizer in ['t5-3b', 't5-11b']:
+            model = T5GNNForConditionalGeneration.from_pretrained(args.checkpoint_summarizer,
+                                                                  load_in_8bit=True, device_map='auto',
+                                                                  args=args)
 
-        gnnqa = GNNQA(model=model, ids_to_rels=rels, ids_to_nodes=nodes,
-                      memory_embs=dataset['memory_nodes'].to_dict(), tokenizer=tokenizer, save_dir=save_dir,
-                      model_lr=args.model_lr, gnn_lr=args.gnn_lr, gnn_layers=args.layer_with_gnn, labels=answers_name)
+    gnnqa = GNNQA(model=model, ids_to_rels=rels, ids_to_nodes=nodes,
+                  memory_embs=dataset['memory_nodes'].to_dict(), tokenizer=tokenizer, save_dir=save_dir,
+                  model_lr=args.model_lr, gnn_lr=args.gnn_lr, gnn_layers=args.layer_with_gnn, labels=answers_name,
+                  model_method=args.model_method)
 
-        # create T5 question for each example
-        dataset[train_name] = dataset[train_name].map(
-            lambda example: {'T5_question': 'question: ' + example['question']})
-        dataset[val_name] = dataset[val_name].map(lambda example: {'T5_question': 'question: ' + example['question']})
-        dataset[test_name] = dataset[test_name].map(lambda example: {'T5_question': 'question: ' + example['question']})
+    # create T5 question for each example
+    dataset[train_name] = dataset[train_name].map(
+        lambda example: {'T5_question': 'question: ' + example['question']})
+    dataset[val_name] = dataset[val_name].map(lambda example: {'T5_question': 'question: ' + example['question']})
+    dataset[test_name] = dataset[test_name].map(lambda example: {'T5_question': 'question: ' + example['question']})
 
-        trainer_args = {
-            'max_epochs': args.max_epochs,
-            'devices': 1,
-            'accumulate_grad_batches': args.accumulate_grad_batches,
-            'callbacks': callbacks,
-            'enable_checkpointing': not args.dont_save,
-            'log_every_n_steps': 1,
-            'logger': logger,
-            'check_val_every_n_epoch': 1,
-            'deterministic': True,
-        }
+    trainer_args = {
+        'max_epochs': args.max_epochs,
+        'devices': 1,
+        'accumulate_grad_batches': args.accumulate_grad_batches,
+        'callbacks': callbacks,
+        'enable_checkpointing': not args.dont_save,
+        'log_every_n_steps': 1,
+        'logger': logger,
+        'check_val_every_n_epoch': 1,
+        'deterministic': True,
+    }
 
-        trainer = Trainer(**trainer_args)
+    trainer = Trainer(**trainer_args)
+    if not args.skip_train:
         trainer.fit(model=gnnqa, train_dataloaders=dataset[train_name], val_dataloaders=dataset[val_name])
 
-        if args.skip_test:
-            return trainer.callback_metrics["val_rouge"].item()  # controllare che ritorni il valore migliore
     if args.skip_test:
-        return 0
-    results = trainer.test(dataloaders=dataset[test_name], ckpt_path='last' if args.dont_save else 'best')
+        return trainer.callback_metrics["val_rouge"].item()  # controllare che ritorni il valore migliore
+
+    results = trainer.test(model=gnnqa, dataloaders=dataset[test_name], ckpt_path='last' if args.dont_save else 'best')
     print(results)
 
 

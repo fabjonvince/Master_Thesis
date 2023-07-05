@@ -41,6 +41,7 @@ class GNNQA(pl.LightningModule):
                  gnn_lr=None,
                  gnn_layers=None,
                  labels=None,
+                 model_method=None,
                  ):
         super().__init__()
         if gnn_layers is None:
@@ -61,6 +62,7 @@ class GNNQA(pl.LightningModule):
         self.test_metrics = {}
         self.save_dir = save_dir
         self.labels = labels
+        self.model_method = model_method
 
     def forward(self,
                 input_ids,
@@ -169,7 +171,7 @@ class GNNQA(pl.LightningModule):
         self.val_metric['predicted_answer'].append(predictions[0])
         if not 'graph' in self.val_metric:
             self.val_metric['graph'] = []
-        self.val_metric['graph'].append(self.model.encoder.get_and_clean_reasoning_path().get_all_reasoning_path())
+        self.val_metric['graph'].append(self.model.get_and_clean_reasoning_path().get_all_reasoning_path())
 
         return
 
@@ -215,7 +217,7 @@ class GNNQA(pl.LightningModule):
         self.test_metrics['predicted_answer'].append(predictions[0])
         if not 'graph' in self.test_metrics:
             self.test_metrics['graph'] = []
-        self.test_metrics['graph'].append(self.model.encoder.get_and_clean_reasoning_path().get_all_reasoning_path())
+        self.test_metrics['graph'].append(self.model.get_and_clean_reasoning_path().get_all_reasoning_path())
         return
 
     def on_test_epoch_end(self):

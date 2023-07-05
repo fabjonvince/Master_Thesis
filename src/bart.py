@@ -1,4 +1,5 @@
 import math
+import pdb
 import random
 from typing import Optional, Union, Tuple, List
 
@@ -321,6 +322,9 @@ class BartGNNForConditionalGeneration(BartPretrainedModel):
     def set_output_embeddings(self, new_embeddings):
         self.lm_head = new_embeddings
 
+    def get_and_clean_reasoning_path(self):
+        return self.model.get_and_clean_reasoning_path()
+
     def forward(
         self,
         input_ids: torch.LongTensor = None,
@@ -445,14 +449,28 @@ class BartGNNForConditionalGeneration(BartPretrainedModel):
         return shift_tokens_right(labels, self.config.pad_token_id, self.config.decoder_start_token_id)
 
 
-    def _reorder_cache(past_key_values, beam_idx):
-        reordered_past = ()
-        for layer_past in past_key_values:
-            # cached cross_attention states don't have to be reordered -> they are always the same
-            reordered_past += (
-                tuple(past_state.index_select(0, beam_idx) for past_state in layer_past[:2]) + layer_past[2:],
-            )
-        return reordered_past
+    def _reorder_cache(self, past_key_values, beam_idx):
+        # if decoder past is not included in output
+        # speedy decoding is disabled and no need to reorder
+        if past_key_values is None:
+            return past_key_values
+
+        reordered_decoder_past = ()
+        for layer_past_states in past_key_values:
+            # get the correct batch idx from layer past batch dim
+            # batch dim of `past` is at 2nd position
+            reordered_layer_past_states = ()
+            for layer_past_state in layer_past_states:
+                # need to set correct `past` for each of the four key / value states
+                reordered_layer_past_states = reordered_layer_past_states + (
+                    layer_past_state.index_select(0, beam_idx.to(layer_past_state.device)),
+                )
+
+            assert reordered_layer_past_states[0].shape == layer_past_states[0].shape
+            assert len(reordered_layer_past_states) == len(layer_past_states)
+
+            reordered_decoder_past = reordered_decoder_past + (reordered_layer_past_states,)
+        return reordered_decoder_past
 
 
 class BartGNNModel(BartPretrainedModel):
@@ -583,6 +601,9 @@ class BartGNNModel(BartPretrainedModel):
             encoder_hidden_states=encoder_outputs.hidden_states,
             encoder_attentions=encoder_outputs.attentions,
         )
+
+    def get_and_clean_reasoning_path(self):
+        return self.encoder.get_and_clean_reasoning_path()
 
 
 class BartGNNEncoder(BartPretrainedModel):
@@ -801,6 +822,11 @@ class BartGNNEncoder(BartPretrainedModel):
         return BaseModelOutput(
             last_hidden_state=hidden_states, hidden_states=encoder_states, attentions=all_attentions
         )
+
+    def get_and_clean_reasoning_path(self):
+        reasoning_path = self.current_reasoning_path
+        self.current_reasoning_path = None
+        return reasoning_path
 
 
 class BartGNNEncoderLayer(nn.Module):

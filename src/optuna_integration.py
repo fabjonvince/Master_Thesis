@@ -122,9 +122,10 @@ def objective(trial, args):
     for k, v in default_args.items():
         if k not in args:
             args[k] = v
-    args['no_wandb'] = True
+    args['no_wandb'] = False
     args['dont_save'] = True
-    args['skip_test'] = True
+    args['skip_test'] = False
+    args['skip_train'] = True
 
 
 

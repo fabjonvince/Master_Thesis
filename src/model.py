@@ -41,7 +41,6 @@ class GNNQA(pl.LightningModule):
                  gnn_lr=None,
                  gnn_layers=None,
                  labels=None,
-                 model_method=None,
                  ):
         super().__init__()
         if gnn_layers is None:
@@ -62,7 +61,6 @@ class GNNQA(pl.LightningModule):
         self.test_metrics = {}
         self.save_dir = save_dir
         self.labels = labels
-        self.model_method = model_method
 
     def forward(self,
                 input_ids,

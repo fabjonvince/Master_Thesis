@@ -329,8 +329,7 @@ def main(args):
 
     gnnqa = GNNQA(model=model, ids_to_rels=rels, ids_to_nodes=nodes,
                   memory_embs=dataset['memory_nodes'].to_dict(), tokenizer=tokenizer, save_dir=save_dir,
-                  model_lr=args.model_lr, gnn_lr=args.gnn_lr, gnn_layers=args.layer_with_gnn, labels=answers_name,
-                  model_method=args.model_method)
+                  model_lr=args.model_lr, gnn_lr=args.gnn_lr, gnn_layers=args.layer_with_gnn, labels=answers_name)
 
     # create T5 question for each example
     dataset[train_name] = dataset[train_name].map(

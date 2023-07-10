@@ -110,6 +110,15 @@ def get_rouge_scores(references, predictions):
     rouge_scores_final['R'] = (rouge_scores['rouge1'].mid.fmeasure * 100 + rouge_scores['rouge2'].mid.fmeasure * 100 + rouge_scores['rougeL'].mid.fmeasure * 100) / 3
     return rouge_scores_final
 
+
+def get_rouge_scores_for_hftrainer(eval_pred, tokenizer):
+    predictions, labels = eval_pred
+    decoded_preds = tokenizer.batch_decode(predictions, skip_special_tokens=True)
+    # Replace -100 in the labels as we can't decode them.
+    labels = np.where(labels != -100, labels, tokenizer.pad_token_id)
+    decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
+    return get_rouge_scores(decoded_labels, decoded_preds)
+
 def get_bert_scores(predictions, references):
     bertscore = load_metric("bertscore")
     results = bertscore.compute(predictions=predictions, references=references, model_type="distilbert-base-uncased")

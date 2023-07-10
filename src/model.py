@@ -89,7 +89,7 @@ class GNNQA(pl.LightningModule):
         #pdb.set_trace()
 
         toks = \
-            self.tokenizer(batch['T5_question'], padding=True, truncation=True, max_length=128,
+            self.tokenizer(batch['question'], padding=True, truncation=True, max_length=128,
                            return_tensors='pt').to(self.device)
         input_ids, attention_mask = toks['input_ids'], toks['attention_mask']
         if len(self.labels.split(',')) > 1:
@@ -156,7 +156,7 @@ class GNNQA(pl.LightningModule):
 
         if not 'question' in self.val_metric:
             self.val_metric['question'] = []
-        self.val_metric['question'].append(batch['T5_question'])
+        self.val_metric['question'].append(batch['question'])
         if not 'target_answer' in self.val_metric:
             self.val_metric['target_answer'] = []
         self.val_metric['target_answer'].append(targets[0])
@@ -198,7 +198,7 @@ class GNNQA(pl.LightningModule):
 
         if not 'question' in self.test_metrics:
             self.test_metrics['question'] = []
-        self.test_metrics['question'].append(batch['T5_question'])
+        self.test_metrics['question'].append(batch['question'])
         if not 'target_answer' in self.test_metrics:
             self.test_metrics['target_answer'] = []
         self.test_metrics['target_answer'].append(targets[0])

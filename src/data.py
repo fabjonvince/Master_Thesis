@@ -2,6 +2,13 @@ from datasets import load_dataset
 
 loaded_datasets = {}
 
+name_mapping = {
+    "eli5": ("train_eli5", "validation_eli5", "test_eli5", "title", "answers,text"),
+    "conceptnet": ("rel", "arg1", "arg2"),
+    "din0s/msmarco-nlgen": ("train", "dev", "test", "query", "answers"),
+    "aquamuse": ("train", "validation", "test", "query", "target"),
+}
+
 
 def get_dataset(dataset_name: str):
     global loaded_datasets

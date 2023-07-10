@@ -13,7 +13,7 @@ from transformers import T5Tokenizer, TrainingArguments
 import wandb
 from preprocess import text_to_graph_concept, add_special_tokens, create_memory, \
     graph_to_nodes_and_rel, get_node_and_rel_dict
-from data import get_dataset
+from data import get_dataset, name_mapping
 from model import GNNQA
 from t5 import T5GNNForConditionalGeneration, available_reporjection_activations
 from pytorch_lightning import Trainer
@@ -83,13 +83,6 @@ def get_args(default=False):
         return argparser.parse_args()
     else:
         return vars(argparser.parse_args([]))
-
-name_mapping = {
-    "eli5": ("train_eli5", "validation_eli5", "test_eli5", "title", "answers,text"),
-    "conceptnet": ("rel", "arg1", "arg2"),
-    "din0s/msmarco-nlgen": ("train", "dev", "test", "query", "answers"),
-    "aquamuse": ("train", "validation", "test", "query", "target"),
-}
 
 
 def main(args):
@@ -329,9 +322,9 @@ def main(args):
 
         # create T5 question for each example
         dataset[train_name] = dataset[train_name].map(
-            lambda example: {'T5_question': 'question: ' + example['question']})
-        dataset[val_name] = dataset[val_name].map(lambda example: {'T5_question': 'question: ' + example['question']})
-        dataset[test_name] = dataset[test_name].map(lambda example: {'T5_question': 'question: ' + example['question']})
+            lambda example: {'question': 'question: ' + example['question']})
+        dataset[val_name] = dataset[val_name].map(lambda example: {'question': 'question: ' + example['question']})
+        dataset[test_name] = dataset[test_name].map(lambda example: {'question': 'question: ' + example['question']})
 
         trainer_args = {
             'max_epochs': args.max_epochs,

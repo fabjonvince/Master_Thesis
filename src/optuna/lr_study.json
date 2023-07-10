@@ -1,15 +1,16 @@
 {
-  "study_name": "lr_study",
-  "model_lr": "OPTUNA",
-  "gnn_lr": "OPTUNA",
-  "max_epochs": 3,
-  "layer_with_gnn_1": 3,
-  "layer_with_gnn_2": 5,
-  "layer_with_gnn_3": -1,
+  "study_name": "final_lr_tuning",
+  "model_lr": "OPTUNA-0.000001-0.0001",
+  "gnn_lr": "OPTUNA-0.000001-0.0001",
+  "max_epochs": 5,
+  "layer_with_gnn_1": 0,
+  "layer_with_gnn_2": 3,
+  "layer_with_gnn_3": 7,
   "gnn_topk":2,
   "load_dataset_from": "dataset/eli5_1000_1000_1000_conceptnet",
   "val_samples": 10,
   "mysql_server_url": "mysql://optuna@137.204.107.153/optuna_example",
-  "number_of_trials": 20,
-  "number_of_parallel_jobs": 3
+  "number_of_trials": 3,
+  "accumulate_grad_batches": 8,
+  "number_of_parallel_jobs": 5
 }

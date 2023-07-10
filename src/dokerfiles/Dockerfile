@@ -36,7 +36,7 @@ RUN apt-get update -y
 RUN apt-get upgrade -y
 RUN apt-get install default-libmysqlclient-dev -y
 RUN pip install mysqlclient
-RUN pip install accelerate bitsandbytes
+RUN pip install accelerate bitsandbytes peft
 
 
 # Back to default frontend

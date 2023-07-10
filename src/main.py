@@ -88,6 +88,7 @@ def get_args(default=False):
 
 
 def main(args):
+    #todo add support to args.no_gnn and arg.max_length
 
     # take as input the dataset name and return the dataset columns
     dataset_columns = name_mapping.get(args.dataset, None)

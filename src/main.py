@@ -15,6 +15,7 @@ from preprocess import text_to_graph_concept, add_special_tokens, create_memory,
     graph_to_nodes_and_rel, get_node_and_rel_dict
 from data import get_dataset, name_mapping
 from model import GNNQA
+from bart import BartGNNForConditionalGeneration
 from t5 import T5GNNForConditionalGeneration, available_reporjection_activations
 from pytorch_lightning import Trainer
 from sentence_transformers import SentenceTransformer
@@ -54,6 +55,7 @@ def get_args(default=False):
 
 
     # Training args
+    argparser.add_argument('--model_method', type=str, default='t5', help='Model method')
     argparser.add_argument('--accumulate_grad_batches', type=int, default=8,
                            help='Number of batches to accumulate gradients')
     argparser.add_argument('--load_dataset_from', type=str, default=None, help='Load dataset from path')
@@ -310,12 +312,19 @@ def main(args):
         rels = {i: word for i, word in enumerate(dataset['memory_rels'].features)}
 
         # model creation
-        if args.checkpoint_summarizer in ['t5-small', 't5-base', 't5-large']:
-            model = T5GNNForConditionalGeneration.from_pretrained(args.checkpoint_summarizer, args=args)
-        if args.checkpoint_summarizer in ['t5-3b', 't5-11b']:
-            model = T5GNNForConditionalGeneration.from_pretrained(args.checkpoint_summarizer,
-                                                                  load_in_8bit=True, device_map='auto',
+        if args.model_method == 'bart':
+            model = BartGNNForConditionalGeneration.from_pretrained(args.checkpoint_summarizer, args)
+        elif args.model_methos == 't5':
+            if args.checkpoint_summarizer in ['t5-small', 't5-base', 't5-large']:
+                model = T5GNNForConditionalGeneration.from_pretrained(args.checkpoint_summarizer, args=args)
+            if args.checkpoint_summarizer in ['t5-3b', 't5-11b']:
+                model = T5GNNForConditionalGeneration.from_pretrained(args.checkpoint_summarizer,
+                                                                load_in_8bit=True, device_map='auto',
                                                                   args=args)
+        else:
+            print(f'The model {args.model_method} is not supported')
+
+
         gnnqa = GNNQA(model=model, ids_to_rels=rels, ids_to_nodes=nodes,
                       memory_embs=dataset['memory_nodes'].to_dict(), tokenizer=tokenizer, save_dir=save_dir,
                       model_lr=args.model_lr, gnn_lr=args.gnn_lr, gnn_layers=args.layer_with_gnn, labels=answers_name)
@@ -345,6 +354,7 @@ def main(args):
             return trainer.callback_metrics["val_rouge"].item()  # controllare che ritorni il valore migliore
     if args.skip_test:
         return 0
+    # todo: load the model from the chekpoint, preproces the dataset
     results = trainer.test(dataloaders=dataset[test_name], ckpt_path='last' if args.dont_save else 'best')
     print(results)
 

@@ -24,9 +24,6 @@ from torchviz import make_dot
 
 from tools import extract_all_relations_for_a_node, extract_values_from_tensor, find_triplets, AllReasoningPath
 
-
-#from model import CustomKilLayer
-
 available_reporjection_activations=['tanh', 'relu', 'sigmoid','elu', 'leaky_relu', 'selu']
 
 

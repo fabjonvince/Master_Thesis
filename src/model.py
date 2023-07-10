@@ -137,9 +137,13 @@ class GNNQA(pl.LightningModule):
                                    memory_embs=self.memory_embs,
                                    rels_ids=rels_ids, **gen_val_params)
         predictions = [self.tokenizer.decode(predictions[0], skip_special_tokens=True)]
-        targets = batch['answers']['text']
+        if len(self.labels.split(',')) > 1:
+            targets = batch[self.labels.split(',')[0]][self.labels.split(',')[1]]
+        else:
+            targets = batch[self.labels]
         if len(targets) > 1:
             targets = [targets[0]]
+
         val_metric = get_rouge_scores(predictions, targets)
         val_bs = get_bert_scores(predictions, targets)
         for k,v in val_metric.items():
@@ -165,7 +169,7 @@ class GNNQA(pl.LightningModule):
         self.val_metric['predicted_answer'].append(predictions[0])
         if not 'graph' in self.val_metric:
             self.val_metric['graph'] = []
-        self.val_metric['graph'].append(self.model.encoder.get_and_clean_reasoning_path().get_all_reasoning_path())
+        self.val_metric['graph'].append(self.model.get_and_clean_reasoning_path().get_all_reasoning_path())
 
         return
 
@@ -179,9 +183,13 @@ class GNNQA(pl.LightningModule):
                                           memory_embs=self.memory_embs,
                                           rels_ids=rels_ids, **gen_test_params)
         predictions = [self.tokenizer.decode(predictions[0], skip_special_tokens=True)]
-        targets = batch['answers']['text']
+        if len(self.labels.split(',')) > 1:
+            targets = batch[self.labels.split(',')[0]][self.labels.split(',')[1]]
+        else:
+            targets = batch[self.labels]
         if len(targets) > 1:
             targets = [targets[0]]
+
         test_metric = get_rouge_scores(predictions, targets)
         test_bs = get_bert_scores(predictions, targets)
         for k,v in test_metric.items():
@@ -207,7 +215,7 @@ class GNNQA(pl.LightningModule):
         self.test_metrics['predicted_answer'].append(predictions[0])
         if not 'graph' in self.test_metrics:
             self.test_metrics['graph'] = []
-        self.test_metrics['graph'].append(self.model.encoder.get_and_clean_reasoning_path().get_all_reasoning_path())
+        self.test_metrics['graph'].append(self.model.get_and_clean_reasoning_path().get_all_reasoning_path())
         return
 
     def on_test_epoch_end(self):

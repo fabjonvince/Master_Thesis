@@ -99,7 +99,7 @@ def text_to_graph_concept(
         args,
 ):
 
-    if args.keyword_extraction_method == 'jake':
+    if args.keyword_extraction_method == 'rake':
         kw_model = Rake()
         kw_model.extract_keywords_from_text(text)
         kw = kw_model.get_ranked_phrases()

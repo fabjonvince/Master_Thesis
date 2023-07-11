@@ -42,6 +42,7 @@ def get_args(default=False):
     argparser.add_argument('--skip_test', default=False, action='store_true', help='skip test')
     argparser.add_argument('--skip_train', default=False, action='store_true', help='skip train')
     argparser.add_argument('--set_anomaly_detection', default=False, action='store_true', help='set torch.autograd.set_detect_anomaly(True) before main')
+    argparser.add_argument('--only_dataset_creation', default=False, action='store_true', help='only create dataset')
 
 
     # Dataset args
@@ -245,7 +246,7 @@ def main(args):
 
     print('dataset loaded')
 
-    if not args.skip_train:
+    if not args.only_dataset_creation:
 
         print("In Main")
 
@@ -352,15 +353,15 @@ def main(args):
         }
 
         trainer = Trainer(**trainer_args)
-        trainer.fit(model=gnnqa, train_dataloaders=dataset[train_name], val_dataloaders=dataset[val_name])
+        if not args.skip_train:
+            trainer.fit(model=gnnqa, train_dataloaders=dataset[train_name], val_dataloaders=dataset[val_name])
 
         if args.skip_test:
             return trainer.callback_metrics["val_rouge"].item()  # controllare che ritorni il valore migliore
-    if args.skip_test:
-        return 0
-    # todo: load the model from the chekpoint, preproces the dataset
-    results = trainer.test(dataloaders=dataset[test_name], ckpt_path='last' if args.dont_save else 'best')
-    print(results)
+
+        # todo: load the model from the chekpoint, preproces the dataset
+        results = trainer.test(model=gnnqa, dataloaders=dataset[test_name], ckpt_path='last' if args.dont_save else 'best')
+        print(results)
 
 
 if __name__ == '__main__':

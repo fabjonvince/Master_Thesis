@@ -312,6 +312,9 @@ def main(args):
         nodes = {i: word for i, word in enumerate(dataset['memory_nodes'].features)}
         rels = {i: word for i, word in enumerate(dataset['memory_rels'].features)}
 
+        if args.no_gnn:
+            layer_with_gnn = []
+            setattr(args, 'layer_with_gnn', layer_with_gnn)
         # model creation
         if args.model_method == 'bart':
             model = BartGNNForConditionalGeneration.from_pretrained(args.checkpoint_summarizer, args)

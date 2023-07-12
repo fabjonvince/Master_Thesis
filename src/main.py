@@ -124,7 +124,7 @@ def main(args):
         dataset = get_dataset(args.dataset)
 
         if args.dataset == 'din0s/msmarco-nlgen':
-            new_set = dataset['train'].train_test_split(test_size=5000)
+            new_set = dataset['train'].train_test_split(test_size=args.test_samples, shuffle=True)
             dataset[train_name] = new_set['train']
             dataset[test_name] = new_set['test']
 

@@ -12,7 +12,7 @@ from datasets import load_from_disk, Dataset
 from transformers import T5Tokenizer, TrainingArguments
 import wandb
 from preprocess import text_to_graph_concept, add_special_tokens, create_memory, \
-    graph_to_nodes_and_rel, get_node_and_rel_dict
+    get_node_and_rel_dict, extract_support_from_links
 from data import get_dataset, name_mapping
 from model import GNNQA
 from bart import BartGNNForConditionalGeneration
@@ -53,6 +53,7 @@ def get_args(default=False):
     argparser.add_argument('--test_samples', type=int, default=None, help='Number of test samples')
     argparser.add_argument('--graph_depth', type=int, default=3, help='Graph depth')
     argparser.add_argument('--keyword_extraction_method', type=str, default='bert', help='kw extraction method')
+    argparser.add_argument('create_support_from_links', default=False, action='store_true', help='create support from links')
 
 
     # Training args
@@ -123,7 +124,7 @@ def main(args):
         # get the original dataset
         dataset = get_dataset(args.dataset)
 
-        if args.dataset == 'din0s/msmarco-nlgen':
+        if args.dataset == 'din0s':
             new_set = dataset['train'].train_test_split(test_size=args.test_samples, shuffle=True)
             dataset[train_name] = new_set['train']
             dataset[test_name] = new_set['test']
@@ -161,6 +162,11 @@ def main(args):
         dataset[train_name] = dataset[train_name].map(
             lambda example: {'question': add_special_tokens(example[question_name], example['keywords'])})
 
+        if args.create_support_from_links:
+            if args.dataset == 'din0s':
+                dataset[train_name] = dataset[train_name].map(
+                    lambda example: {'support_documents': extract_support_from_links(example['passages'])})
+
         # dataset[train_name] = dataset[train_name].map(
         # lambda example: tokenizer(example['question'], padding='max_length', truncation=True, max_length=args.max_length, return_tensors='pt'))
 
@@ -183,6 +189,11 @@ def main(args):
         dataset[val_name] = dataset[val_name].map(
             lambda example: {'question': add_special_tokens(example[question_name], example['keywords'])})
 
+        if args.create_support_from_links:
+            if args.dataset == 'din0s':
+                dataset[val_name] = dataset[val_name].map(
+                    lambda example: {'support_documents': extract_support_from_links(example['passages'])})
+
         # dataset[val_name] = dataset[val_name].map(
         # lambda example: tokenizer(example['question'], padding='max_length', truncation=True, max_length=args.max_length, return_tensors='pt'))
 
@@ -204,6 +215,12 @@ def main(args):
 
         dataset[test_name] = dataset[test_name].map(
             lambda example: {'question': add_special_tokens(example[question_name], example['keywords'])})
+
+        if args.create_support_from_links:
+            if args.dataset == 'din0s':
+                dataset[test_name] = dataset[test_name].map(
+                    lambda example: {'support_documents': extract_support_from_links(example['passages'])})
+
         # dataset[test_name] = dataset[test_name].map(
         # lambda example: tokenizer(example['question'], padding='max_length', truncation=True, max_length=args.max_length, return_tensors='pt'))
 
@@ -245,6 +262,7 @@ def main(args):
     # print(dataset['memory_rels'])
 
     print('dataset loaded')
+    pdb.set_trace()
 
     if not args.only_dataset_creation:
 

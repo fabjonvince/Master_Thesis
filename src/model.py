@@ -7,8 +7,7 @@ import torch
 from torch import tensor
 
 from preprocess import load_with_pickle, from_triplets_of_ids_to_triplets_of_string
-from tools import AllReasoningPath, get_rouge_scores, get_bert_scores
-
+from tools import AllReasoningPath, get_rouge_scores, get_bert_scores, get_bartscore
 
 gen_val_params = {
     'max_length': 140,
@@ -192,6 +191,7 @@ class GNNQA(pl.LightningModule):
 
         test_metric = get_rouge_scores(predictions, targets)
         test_bs = get_bert_scores(predictions, targets)
+        test_bart = get_bartscore(predictions, targets)
         for k,v in test_metric.items():
             if k in self.test_metrics:
                 self.test_metrics[k].append(v)
@@ -203,6 +203,8 @@ class GNNQA(pl.LightningModule):
                 self.test_metrics[k].append(v)
             else:
                 self.test_metrics[k] = [v]
+
+        self.test_metrics['bart_score'] = test_bart
 
         if not 'question' in self.test_metrics:
             self.test_metrics['question'] = []

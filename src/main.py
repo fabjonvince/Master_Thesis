@@ -262,7 +262,6 @@ def main(args):
     # print(dataset['memory_rels'])
 
     print('dataset loaded')
-    pdb.set_trace()
 
     if not args.only_dataset_creation:
 

@@ -5,7 +5,7 @@ loaded_datasets = {}
 name_mapping = {
     "eli5": ("train_eli5", "validation_eli5", "test_eli5", "title", "answers,text"),
     "conceptnet": ("rel", "arg1", "arg2"),
-    "din0s/msmarco-nlgen": ("train", "dev", "test", "query", "answers"),
+    "din0s": ("train", "dev", "test", "query", "answers"),
     "aquamuse": ("train", "validation", "test", "query", "target"),
 }
 
@@ -26,7 +26,7 @@ def get_dataset(dataset_name: str):
             loaded_datasets[dataset_name] = load_dataset("natural_questions")
         elif dataset_name == 'conceptnet':
             loaded_datasets[dataset_name] = load_dataset("peandrew/conceptnet_en_nomalized")
-        elif dataset_name == 'din0s/msmarco-nlgen':
+        elif dataset_name == 'din0s':
             loaded_datasets[dataset_name] = load_dataset("din0s/msmarco-nlgen")
         elif dataset_name == 'aquamuse':
             loaded_datasets[dataset_name] = load_dataset("aquamuse", "abstractive")

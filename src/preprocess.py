@@ -155,7 +155,7 @@ def print_triplets(triplets):
     for triplet in triplets:
         print(triplet[0] + " -> " + triplet[1] + " -> " + triplet[2])
 
-
+"""
 def graph_to_nodes_and_rel(triplets):
     edges = {}
     relations = {}
@@ -180,6 +180,13 @@ def graph_to_nodes_and_rel(triplets):
             relations[rel[1]] = [(rel[0], rel[2])]
 
     return {'nodes': edges, 'relations': relations}
+"""
+
+
+def extract_support_from_links(support):
+  txt = ' '.join(x['passage_text'] for x in support if x['is_selected'] == 1)
+  return txt
+
 
 
 def create_memory(model, sentences, args):

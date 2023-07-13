@@ -319,7 +319,7 @@ def main(args):
         # model creation
         if args.model_method == 'bart':
             model = BartGNNForConditionalGeneration.from_pretrained(args.checkpoint_summarizer, args)
-        elif args.model_methos == 't5':
+        elif args.model_method == 't5':
             if args.checkpoint_summarizer in ['t5-small', 't5-base', 't5-large']:
                 model = T5GNNForConditionalGeneration.from_pretrained(args.checkpoint_summarizer, args=args)
             if args.checkpoint_summarizer in ['t5-3b', 't5-11b']:

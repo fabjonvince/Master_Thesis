@@ -11,23 +11,23 @@ from tools import AllReasoningPath, get_rouge_scores, get_bert_scores
 
 
 gen_val_params = {
-    'max_length': 128,
+    'max_length': 140,
     'num_beams': 2,
     'no_repeat_ngram_size': 3,
     'early_stopping': True,
     'length_penalty': 1.1,
     'repetition_penalty': 1.5,
-    'min_length': 100,
+    'min_length': 50,
 }
 
 gen_test_params = {
-    'max_length': 128,
-    'num_beams': 4,
+    'max_length': 140,
+    'num_beams': 3,
     'no_repeat_ngram_size': 3,
     'early_stopping': True,
     'length_penalty': 1.1,
     'repetition_penalty': 1.5,
-    'min_length': 100,
+    'min_length': 50,
 }
 
 class GNNQA(pl.LightningModule):
@@ -176,12 +176,12 @@ class GNNQA(pl.LightningModule):
     def test_step(self, batch, batch_idx):
         #pdb.set_trace()
         batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids = self.prepare_data_from_batch(batch)
-
-        predictions = self.model.generate(input_ids=input_ids, gnn_triplets=graph,
-                                          gnn_mask=batch['gnn_mask'], rel_mask=batch['rel_mask'],
-                                          current_reasoning_path=reasoning_path,
-                                          memory_embs=self.memory_embs,
-                                          rels_ids=rels_ids, **gen_test_params)
+        with torch.no_grad():
+            predictions = self.model.generate(input_ids=input_ids, gnn_triplets=graph,
+                                              gnn_mask=batch['gnn_mask'], rel_mask=batch['rel_mask'],
+                                              current_reasoning_path=reasoning_path,
+                                              memory_embs=self.memory_embs,
+                                              rels_ids=rels_ids, **gen_test_params)
         predictions = [self.tokenizer.decode(predictions[0], skip_special_tokens=True)]
         if len(self.labels.split(',')) > 1:
             targets = batch[self.labels.split(',')[0]][self.labels.split(',')[1]]

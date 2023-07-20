@@ -88,15 +88,19 @@ class GNNQA(pl.LightningModule):
         #pdb.set_trace()
 
         toks = \
-            self.tokenizer(batch['question'], padding=True, truncation=True, max_length=128,
-                           return_tensors='pt').to(self.device)
+            self.tokenizer(batch['question'], padding=True, truncation=True,
+                           return_tensors='pt', max_length=128).to(self.device)
         input_ids, attention_mask = toks['input_ids'], toks['attention_mask']
         if len(self.labels.split(',')) > 1:
             answer = batch[self.labels.split(',')[0]][self.labels.split(',')[1]]
         else:
             answer = batch[self.labels]
-        if len(answer) > 1:
-            answer = [answer[0]]
+        # I need to check if answer is a list with more than 1 value
+        if type(answer) == list:
+            if len(answer) > 1:
+                answer = [answer[0]]
+        else:
+            answer = [answer]
         labels = self.tokenizer(answer, padding=True, truncation=True, return_tensors='pt')[
             'input_ids'].to(self.device)
         # labels = tensor(labels, dtype=torch.long)
@@ -129,22 +133,42 @@ class GNNQA(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         #pdb.set_trace()
         batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids = self.prepare_data_from_batch(batch)
-
-        predictions = self.model.generate(input_ids=input_ids, gnn_triplets=graph,
-                                   gnn_mask=batch['gnn_mask'], rel_mask=batch['rel_mask'],
-                                   current_reasoning_path=reasoning_path,
-                                   memory_embs=self.memory_embs,
-                                   rels_ids=rels_ids, **gen_val_params)
+        print('Validation step')
+        # I want to print all the debug info to investigate the COOM problem
+        print('input_ids', input_ids.shape)
+        print('attention_mask', attention_mask.shape)
+        print('labels', labels.shape)
+        print('graph', len(graph))
+        print('reasoning_path', reasoning_path)
+        print('rels_ids', len(rels_ids))
+        # now I wanna print the memory used in gbs
+        print('Memory used before generation', torch.cuda.memory_allocated() / 1e9)
+        with torch.no_grad():
+            predictions = self.model.generate(input_ids=input_ids, gnn_triplets=graph,
+                                       gnn_mask=batch['gnn_mask'], rel_mask=batch['rel_mask'],
+                                       current_reasoning_path=reasoning_path,
+                                       memory_embs=self.memory_embs,
+                                       rels_ids=rels_ids, **gen_val_params)
         predictions = [self.tokenizer.decode(predictions[0], skip_special_tokens=True)]
+        print('Memory used after generation', torch.cuda.memory_allocated() / 1e9)
         if len(self.labels.split(',')) > 1:
             targets = batch[self.labels.split(',')[0]][self.labels.split(',')[1]]
         else:
             targets = batch[self.labels]
-        if len(targets) > 1:
-            targets = [targets[0]]
+        if type(targets) == list:
+            if len(targets) > 1:
+                targets = [targets[0]]
+        else:
+            targets = [targets]
 
         val_metric = get_rouge_scores(predictions, targets)
         val_bs = get_bert_scores(predictions, targets)
+        print('Memory used after bertscores', torch.cuda.memory_allocated() / 1e9)
+        val_bart = get_bartscore(predictions, targets)
+        print('Memory used after bart scores', torch.cuda.memory_allocated() / 1e9)
+        print('bert_scores', val_bs)
+        print('rouge_scores', val_metric)
+        print('bart_scores', val_bart)
         for k,v in val_metric.items():
             if k in self.val_metric:
                 self.val_metric[k].append(v)
@@ -156,6 +180,9 @@ class GNNQA(pl.LightningModule):
                 self.val_metric[k].append(v)
             else:
                 self.val_metric[k] = [v]
+        if 'bart_score' not in self.val_metric:
+            self.val_metric['bart_score'] = []
+        self.val_metric['bart_score'].append(val_bart)
 
         if not 'question' in self.val_metric:
             self.val_metric['question'] = []
@@ -169,7 +196,7 @@ class GNNQA(pl.LightningModule):
         if not 'graph' in self.val_metric:
             self.val_metric['graph'] = []
         self.val_metric['graph'].append(self.model.get_and_clean_reasoning_path().get_all_reasoning_path())
-
+        print('Memory used at the end of validation', torch.cuda.memory_allocated() / 1e9)
         return
 
     def test_step(self, batch, batch_idx):
@@ -186,8 +213,11 @@ class GNNQA(pl.LightningModule):
             targets = batch[self.labels.split(',')[0]][self.labels.split(',')[1]]
         else:
             targets = batch[self.labels]
-        if len(targets) > 1:
-            targets = [targets[0]]
+        if type(targets) == list:
+            if len(targets) > 1:
+                targets = [targets[0]]
+        else:
+            targets = [targets]
 
         test_metric = get_rouge_scores(predictions, targets)
         test_bs = get_bert_scores(predictions, targets)
@@ -203,8 +233,9 @@ class GNNQA(pl.LightningModule):
                 self.test_metrics[k].append(v)
             else:
                 self.test_metrics[k] = [v]
-
-        self.test_metrics['bart_score'] = test_bart
+        if 'bart_score' not in self.test_metrics:
+            self.test_metrics['bart_score'] = []
+        self.test_metrics['bart_score'].append(test_bart)
 
         if not 'question' in self.test_metrics:
             self.test_metrics['question'] = []

@@ -33,8 +33,6 @@ class SingleReasoningPath:
         return self.kpath
 
 
-
-
 class AllReasoningPath:
     def __init__(self):
         self.all_path = dict()
@@ -55,25 +53,28 @@ class AllReasoningPath:
         self.all_path[root_node].add_new_step(rel, node, prob, k)
 
     def get_all_reasoning_path(self):
-        return {k: v.get_reasoning_path() for k,v in self.all_path.items()}
+        return {k: v.get_reasoning_path() for k, v in self.all_path.items()}
 
 
 # Define a function named find_triplets. It will be used inside the Custom layer
 def find_triplets(list_of_triplets, start=None, rel=None, end=None):
-  # Initialize an empty list to store the matching triplets
-  result = []
-  # Loop through each triplet in the input list
-  for triplet in list_of_triplets:
-    # Check if the triplet matches the start, rel, end parameters
-    # If any parameter is None, it means any value is acceptable
-    if (start is None or triplet[0] == start) and (rel is None or triplet[1] == rel) and (end is None or triplet[2] == end):
-      # Add the matching triplet to the result list
-      result.append(triplet)
-  # Return the result list
-  return result
+    # Initialize an empty list to store the matching triplets
+    result = []
+    # Loop through each triplet in the input list
+    for triplet in list_of_triplets:
+        # Check if the triplet matches the start, rel, end parameters
+        # If any parameter is None, it means any value is acceptable
+        if (start is None or triplet[0] == start) and (rel is None or triplet[1] == rel) and (
+                end is None or triplet[2] == end):
+            # Add the matching triplet to the result list
+            result.append(triplet)
+    # Return the result list
+    return result
+
 
 def extract_all_relations_for_a_node(node_name, triplets):
-  return np.unique([r for _, r, _ in find_triplets(triplets, start=node_name)]).tolist()
+    return np.unique([r for _, r, _ in find_triplets(triplets, start=node_name)]).tolist()
+
 
 def extract_values_from_tensor(tensor, indices):
     """
@@ -112,7 +113,8 @@ def get_rouge_scores(references, predictions):
     rouge_scores_final = {key: value.mid.fmeasure * 100 for key, value in rouge_scores.items()}
     rouge_scores_final = {k: round(v, 2) for k, v in rouge_scores_final.items()}
     rouge_scores_final['R1_prec'] = rouge_scores['rouge1'].mid.precision * 100
-    rouge_scores_final['R'] = (rouge_scores['rouge1'].mid.fmeasure * 100 + rouge_scores['rouge2'].mid.fmeasure * 100 + rouge_scores['rougeL'].mid.fmeasure * 100) / 3
+    rouge_scores_final['R'] = (rouge_scores['rouge1'].mid.fmeasure * 100 + rouge_scores['rouge2'].mid.fmeasure * 100 +
+                               rouge_scores['rougeL'].mid.fmeasure * 100) / 3
     return rouge_scores_final
 
 
@@ -124,8 +126,9 @@ def get_rouge_scores_for_hftrainer(eval_pred, tokenizer):
     decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
     return get_rouge_scores(decoded_labels, decoded_preds)
 
+
 def get_bert_scores(predictions, references):
-    bertscore = load_metric("bertscore")
+    bertscore = SingletonBertmetric()
     result_bs = bertscore.compute(predictions=predictions, references=references, idf=False, batch_size=32,
                                   lang="en",
                                   rescale_with_baseline=True, model_type="microsoft/deberta-large-mnli")
@@ -134,10 +137,25 @@ def get_bert_scores(predictions, references):
 
 
 def get_bartscore(predictions, sources):
-    bart_scorer = BARTScorer(device="cuda:0", checkpoint="facebook/bart-large-cnn")
-    score = bart_scorer.score(sources.tolist(), predictions, batch_size=4)
+    with torch.no_grad():
+        bart_scorer = SingletonBartScorer()
+        score = bart_scorer.score(sources, predictions, batch_size=4)
     return sum(score) / len(score)
 
+
+class SingletonBartScorer(object):
+
+    def __new__(cls):
+        if not hasattr(cls, 'instance'):
+            cls.instance = BARTScorer()
+        return cls.instance
+
+
+class SingletonBertmetric(object):
+    def __new__(cls):
+        if not hasattr(cls, 'instance'):
+            cls.instance = load_metric("bertscore")
+        return cls.instance
 
 class BARTScorer:
     def __init__(self, device='cuda:0', max_length=1024, checkpoint='facebook/bart-large-cnn'):

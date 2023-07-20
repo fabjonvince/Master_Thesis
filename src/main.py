@@ -3,6 +3,7 @@ from datetime import datetime
 import os
 import time
 import pdb
+from pathlib import Path
 
 import datasets
 import numpy as np
@@ -22,7 +23,7 @@ from sentence_transformers import SentenceTransformer
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 from pytorch_lightning import seed_everything
-
+#from pytorch_lightning.profiler import PyTorchProfiler
 from pytorch_lightning.loggers import WandbLogger, TensorBoardLogger
 
 torch.manual_seed(42)
@@ -36,13 +37,14 @@ def get_args(default=False):
 
     # RUN Args
     argparser.add_argument('--run_info', type=str, default=None, help='Run info that will be added to run name')
-    argparser.add_argument('--wandb_project', type=str, default='gnnqa_default_project', help='wandb project name')
+    argparser.add_argument('--project', type=str, default='gnnqa_default_project', help='wandb project name')
     argparser.add_argument('--debug', action='store_true', help='Debug mode')
     argparser.add_argument('--dont_save', default=False, action='store_true', help='do not save the model')
     argparser.add_argument('--skip_test', default=False, action='store_true', help='skip test')
     argparser.add_argument('--skip_train', default=False, action='store_true', help='skip train')
     argparser.add_argument('--set_anomaly_detection', default=False, action='store_true', help='set torch.autograd.set_detect_anomaly(True) before main')
     argparser.add_argument('--only_dataset_creation', default=False, action='store_true', help='only create dataset')
+    argparser.add_argument('--use_16bit', default=False, action='store_true', help='use 16bit precision')
 
 
     # Dataset args
@@ -70,6 +72,7 @@ def get_args(default=False):
     argparser.add_argument('--no_wandb', default=False, action='store_true', help='do not use wandb')
     argparser.add_argument('--optuna_pruner_callback', default=None, help='optuna pruner callback')
     argparser.add_argument('--model_lr', default=0.000001, type=float, help='model learning rate')
+    argparser.add_argument('--use_profiler', default=False, action='store_true', help='use profiler')
 
     # GNN Args
     argparser.add_argument('--layer_with_gnn', type=int, nargs='+', default=[1, 2], help='Layers with KIL')
@@ -296,11 +299,12 @@ def main(args):
         if not args.no_wandb:
             logger = WandbLogger(
                 name=run_name,
-                project=args.wandb_project,
+                project=args.project,
             )
         else:
+            save_dir = Path('./logs/').joinpath(args.project)
             logger = TensorBoardLogger(
-                save_dir='logs/',
+                save_dir=str(save_dir),
                 name=run_name,
             )
 
@@ -367,6 +371,7 @@ def main(args):
             'logger': logger,
             'check_val_every_n_epoch': 1,
             'deterministic': True,
+            'precision': 16 if args.use_16bit else 32,
         }
 
         trainer = Trainer(**trainer_args)

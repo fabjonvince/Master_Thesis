@@ -174,6 +174,7 @@ class CustomGNNLayer(torch.nn.Module):
         self.topk = topk
         # the classification head is composed by a linear layer and a softmax function
         self.classification_head = torch.nn.Sequential(torch.nn.Linear(self.model_size, self.n_rel),
+                                                       torch.nn.Sigmoid(),
                                                        torch.nn.Softmax(dim=1))
 
         # Now I need layer to perform a attention reprojection

@@ -1,8 +1,13 @@
 import pdb
 import re
 import pickle
+import time
+from concurrent.futures import ThreadPoolExecutor
+
+import requests
 import yake
 import nltk
+from bs4 import BeautifulSoup
 from rake_nltk import Rake
 nltk.download('stopwords')
 nltk.download('punkt')
@@ -182,10 +187,24 @@ def graph_to_nodes_and_rel(triplets):
     return {'nodes': edges, 'relations': relations}
 """
 
+def extract_support_from_links(support, dataset):
+    if dataset == 'din0s':
+        txt = ' '.join(x['passage_text'] for x in support if x['is_selected'] == 1)
+    elif dataset == 'aquamuse':
+        txt = ''
+        if len(support) > 10:
+            support = support[:10]
+        for url in support:
+            try:
+                html = requests.get(url, timeout=2)
+                soup = BeautifulSoup(html.text, 'html.parser')
+                txt = txt + ' ' + soup.getText()
+            except requests.exceptions.RequestException as e:
+                pass
 
-def extract_support_from_links(support):
-  txt = ' '.join(x['passage_text'] for x in support if x['is_selected'] == 1)
-  return txt
+        txt = txt.replace('\n', ' ')
+
+    return txt
 
 
 

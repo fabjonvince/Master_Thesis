@@ -3,10 +3,10 @@ from datasets import load_dataset
 loaded_datasets = {}
 
 name_mapping = {
-    "eli5": ("train_eli5", "validation_eli5", "test_eli5", "title", "answers,text"),
+    "eli5": ("train_eli5", "validation_eli5", "test_eli5", "title", "answers,text", ""),
     "conceptnet": ("rel", "arg1", "arg2"),
-    "din0s": ("train", "dev", "test", "query", "answers"),
-    "aquamuse": ("train", "validation", "test", "query", "target"),
+    "din0s": ("train", "dev", "test", "query", "answers", "passages"),
+    "aquamuse": ("train", "validation", "test", "query", "target", "input_urls"),
 }
 
 

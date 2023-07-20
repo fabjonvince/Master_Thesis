@@ -55,7 +55,7 @@ def get_args(default=False):
     argparser.add_argument('--test_samples', type=int, default=None, help='Number of test samples')
     argparser.add_argument('--graph_depth', type=int, default=3, help='Graph depth')
     argparser.add_argument('--keyword_extraction_method', type=str, default='bert', help='kw extraction method')
-    argparser.add_argument('create_support_from_links', default=False, action='store_true', help='create support from links')
+    argparser.add_argument('--create_support_from_links', default=False, action='store_true', help='create support from links')
 
 
     # Training args
@@ -73,6 +73,7 @@ def get_args(default=False):
     argparser.add_argument('--optuna_pruner_callback', default=None, help='optuna pruner callback')
     argparser.add_argument('--model_lr', default=0.000001, type=float, help='model learning rate')
     argparser.add_argument('--use_profiler', default=False, action='store_true', help='use profiler')
+    argparser.add_argument('--use_support_document', default=False, action='store_true', help='use support document')
 
     # GNN Args
     argparser.add_argument('--layer_with_gnn', type=int, nargs='+', default=[1, 2], help='Layers with KIL')
@@ -102,6 +103,7 @@ def main(args):
     test_name = dataset_columns[2]
     question_name = dataset_columns[3]
     answers_name = dataset_columns[4]
+    support_doc_name = dataset_columns[5]
 
     # set device
     device = 'gpu' if torch.cuda.is_available() else 'cpu'
@@ -124,6 +126,9 @@ def main(args):
             args.keyword_extraction_method = 'bert'
         # directory where to save the dataset
         save_dir = f'dataset/{args.dataset}_{args.train_samples}_{args.val_samples}_{args.test_samples}_conceptnet_{args.keyword_extraction_method}'
+        if args.create_support_from_links:
+            if args.dataset == 'din0s' or args.dataset == 'aquamuse':
+                save_dir = save_dir + '_doc'
         # get the original dataset
         dataset = get_dataset(args.dataset)
 
@@ -165,11 +170,6 @@ def main(args):
         dataset[train_name] = dataset[train_name].map(
             lambda example: {'question': add_special_tokens(example[question_name], example['keywords'])})
 
-        if args.create_support_from_links:
-            if args.dataset == 'din0s':
-                dataset[train_name] = dataset[train_name].map(
-                    lambda example: {'support_documents': extract_support_from_links(example['passages'])})
-
         # dataset[train_name] = dataset[train_name].map(
         # lambda example: tokenizer(example['question'], padding='max_length', truncation=True, max_length=args.max_length, return_tensors='pt'))
 
@@ -191,11 +191,6 @@ def main(args):
 
         dataset[val_name] = dataset[val_name].map(
             lambda example: {'question': add_special_tokens(example[question_name], example['keywords'])})
-
-        if args.create_support_from_links:
-            if args.dataset == 'din0s':
-                dataset[val_name] = dataset[val_name].map(
-                    lambda example: {'support_documents': extract_support_from_links(example['passages'])})
 
         # dataset[val_name] = dataset[val_name].map(
         # lambda example: tokenizer(example['question'], padding='max_length', truncation=True, max_length=args.max_length, return_tensors='pt'))
@@ -219,10 +214,7 @@ def main(args):
         dataset[test_name] = dataset[test_name].map(
             lambda example: {'question': add_special_tokens(example[question_name], example['keywords'])})
 
-        if args.create_support_from_links:
-            if args.dataset == 'din0s':
-                dataset[test_name] = dataset[test_name].map(
-                    lambda example: {'support_documents': extract_support_from_links(example['passages'])})
+
 
         # dataset[test_name] = dataset[test_name].map(
         # lambda example: tokenizer(example['question'], padding='max_length', truncation=True, max_length=args.max_length, return_tensors='pt'))
@@ -247,6 +239,19 @@ def main(args):
         print(len(dataset[val_name]))
         print(len(dataset[test_name]))
 
+        # create support documents from links if needed, after dataset reduction because it takes a lot of time for each example
+        if args.create_support_from_links:
+            if args.dataset == 'din0s' or args.dataset == 'aquamuse':
+                dataset[train_name] = dataset[train_name].map(
+                    lambda example: {'support_documents': extract_support_from_links(example[support_doc_name], args.dataset)})
+
+                dataset[val_name] = dataset[val_name].map(
+                    lambda example: {'support_documents': extract_support_from_links(example[support_doc_name], args.dataset)})
+
+                dataset[test_name] = dataset[test_name].map(
+                    lambda example: {'support_documents': extract_support_from_links(example[support_doc_name], args.dataset)})
+
+
         print('creating nodes and rels embeddings')
         # Load a pretrained model with all-MiniLM-L12-v2 checkpoint
         st_model = SentenceTransformer('all-MiniLM-L12-v2') if device == 'cpu' else SentenceTransformer(
@@ -265,6 +270,7 @@ def main(args):
     # print(dataset['memory_rels'])
 
     print('dataset loaded')
+    #pdb.set_trace()
 
     if not args.only_dataset_creation:
 
@@ -353,7 +359,8 @@ def main(args):
 
         gnnqa = GNNQA(model=model, ids_to_rels=rels, ids_to_nodes=nodes,
                       memory_embs=dataset['memory_nodes'].to_dict(), tokenizer=tokenizer, save_dir=save_dir,
-                      model_lr=args.model_lr, gnn_lr=args.gnn_lr, gnn_layers=args.layer_with_gnn, labels=answers_name)
+                      model_lr=args.model_lr, gnn_lr=args.gnn_lr, gnn_layers=args.layer_with_gnn, labels=answers_name,
+                      use_support_document=args.use_support_document)
 
         # create T5 question for each example
         dataset[train_name] = dataset[train_name].map(

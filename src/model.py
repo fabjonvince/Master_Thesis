@@ -40,6 +40,7 @@ class GNNQA(pl.LightningModule):
                  gnn_lr=None,
                  gnn_layers=None,
                  labels=None,
+                 use_support_document=False,
                  ):
         super().__init__()
         if gnn_layers is None:
@@ -60,6 +61,10 @@ class GNNQA(pl.LightningModule):
         self.test_metrics = {}
         self.save_dir = save_dir
         self.labels = labels
+        self.use_support_document = use_support_document
+        if self.use_support_document == True:
+            self.tokenizer.add_special_tokens(
+                {"additional_special_tokens": tokenizer.additional_special_tokens + ["<SUPP_DOC_TOK>"]})
 
     def forward(self,
                 input_ids,
@@ -87,9 +92,17 @@ class GNNQA(pl.LightningModule):
     def prepare_data_from_batch(self, batch):
         #pdb.set_trace()
 
-        toks = \
-            self.tokenizer(batch['question'], padding=True, truncation=True,
-                           return_tensors='pt', max_length=128).to(self.device)
+        if self.use_support_document == True and batch['support_documents'] != '':
+            support_documents = batch['support_documents']
+            toks = \
+                self.tokenizer(batch['question'] + ' <SUPP_DOC_TOK> ' + support_documents, padding=True, truncation=True, max_length=1024,
+                           return_tensors='pt').to(self.device)
+
+        else:
+            toks = \
+                self.tokenizer(batch['question'], padding=True, truncation=True, max_length=128,
+                               return_tensors='pt').to(self.device)
+
         input_ids, attention_mask = toks['input_ids'], toks['attention_mask']
         if len(self.labels.split(',')) > 1:
             answer = batch[self.labels.split(',')[0]][self.labels.split(',')[1]]
@@ -117,6 +130,7 @@ class GNNQA(pl.LightningModule):
         # set the path in the graph
         reasoning_path = AllReasoningPath()
         reasoning_path.set_root_nodes(keywords, 2)
+
         return batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids
 
     def training_step(self, batch, batch_idx):
@@ -126,6 +140,7 @@ class GNNQA(pl.LightningModule):
         loss = self(input_ids=input_ids, attention_mask=attention_mask, labels=labels, gnn_triplets=graph,
                     gnn_mask=batch['gnn_mask'], rel_mask=batch['rel_mask'], current_reasoning_path=reasoning_path,
                     memory_embs=self.memory_embs, rels_ids=rels_ids)[0]
+
 
         self.log('train_loss', loss.item(), on_step=True, on_epoch=False, prog_bar=True)
         return loss

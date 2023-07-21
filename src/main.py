@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import torch
 from datasets import load_from_disk, Dataset
-from transformers import T5Tokenizer, TrainingArguments
+from transformers import T5Tokenizer
 import wandb
 from preprocess import text_to_graph_concept, add_special_tokens, create_memory, \
     get_node_and_rel_dict, extract_support_from_links
@@ -80,7 +80,7 @@ def get_args(default=False):
     argparser.add_argument('--gnn_topk', type=int, default=2, help='Number of topk nodes to consider for each root node')
     argparser.add_argument('--checkpoint_sentence_transformer', type=str, default='all-MiniLM-L12-v2',
                            help='Load sentence transformer checkpoint')
-    argparser.add_argument('--sentence_transformer_embedding_size', type=int, default=384,
+    argparser.add_argument('--sentence_transformer_embedding_size', type=int, default=768,
                            help='Sentence transformer embedding size')
     argparser.add_argument('--no_gnn', default=False, action='store_true', help='do not use gnn. To lunch baselines')
     argparser.add_argument('--gnn_lr', default=None, type=float, help='gnn learning rate')
@@ -107,8 +107,6 @@ def main(args):
 
     # set device
     device = 'gpu' if torch.cuda.is_available() else 'cpu'
-
-    #pdb.set_trace()
 
     # load tokenizer and add special tokens
     tokenizer = T5Tokenizer.from_pretrained('t5-base')
@@ -252,7 +250,9 @@ def main(args):
                     lambda example: {'support_documents': extract_support_from_links(example[support_doc_name], args.dataset)})
 
 
-        print('creating nodes and rels embeddings')
+        print('saving nodes and rels of the graphs')
+
+        """
         # Load a pretrained model with all-MiniLM-L12-v2 checkpoint
         st_model = SentenceTransformer('all-MiniLM-L12-v2') if device == 'cpu' else SentenceTransformer(
             'all-MiniLM-L12-v2').cuda()
@@ -263,6 +263,11 @@ def main(args):
         rembs = create_memory(st_model, rels, st_pars)
         dataset['memory_nodes'] = Dataset.from_pandas(pd.DataFrame(data=nembs))
         dataset['memory_rels'] = Dataset.from_pandas(pd.DataFrame(data=rembs))
+        """
+
+
+        dataset['memory_nodes'] = Dataset.from_pandas(pd.DataFrame.from_dict(data=nodes_dict))
+        dataset['memory_rels'] = Dataset.from_pandas(pd.DataFrame.from_dict(data=rels_dict))
 
         # save the dataset to disk
         dataset.save_to_disk(save_dir)
@@ -283,13 +288,11 @@ def main(args):
         if args.test_samples:
             dataset[test_name] = dataset[test_name].select(range(args.test_samples))
 
+
         # set total number of rel, nodes and gnn embs size
         setattr(args, 'n_rel', len(dataset['memory_rels'].features))
         setattr(args, 'n_nodes', len(dataset['memory_nodes'].features))
         setattr(args, 'gnn_embs_size', args.sentence_transformer_embedding_size)
-
-
-
 
 
         # Next I take the date in gg_mm_yyyy format
@@ -336,10 +339,6 @@ def main(args):
         else:
             save_dir = None
 
-        # create dict with ID and word for each nodes and rels
-        nodes = {i: word for i, word in enumerate(dataset['memory_nodes'].features)}
-        rels = {i: word for i, word in enumerate(dataset['memory_rels'].features)}
-
         if args.no_gnn:
             layer_with_gnn = []
             setattr(args, 'layer_with_gnn', layer_with_gnn)
@@ -356,9 +355,13 @@ def main(args):
         else:
             print(f'The model {args.model_method} is not supported')
 
+        # create dict with ID and word for each nodes and rels
+        nodes = {int(i): word[0] for i, word in dataset['memory_nodes'].to_dict().items()}
+        rels = {int(i): word[0] for i, word in dataset['memory_rels'].to_dict().items()}
+
 
         gnnqa = GNNQA(model=model, ids_to_rels=rels, ids_to_nodes=nodes,
-                      memory_embs=dataset['memory_nodes'].to_dict(), tokenizer=tokenizer, save_dir=save_dir,
+                      tokenizer=tokenizer, save_dir=save_dir,
                       model_lr=args.model_lr, gnn_lr=args.gnn_lr, gnn_layers=args.layer_with_gnn, labels=answers_name,
                       use_support_document=args.use_support_document)
 

@@ -20,143 +20,9 @@ except:
     subprocess.check_call([sys.executable, "-m", "pip", "install", 'torchviz'])
     import torchviz
 
-from torchviz import make_dot
-
 from tools import extract_all_relations_for_a_node, extract_values_from_tensor, find_triplets, AllReasoningPath
 
 available_reporjection_activations=['tanh', 'relu', 'sigmoid','elu', 'leaky_relu', 'selu']
-
-
-class CustomKilLayer(torch.nn.Module):
-
-    def __init__(self,
-                 n_rel, # Numero di tutte le possibili relazioni
-                 n_nodes):
-        super().__init__()
-        self.register_parameter("wrel", torch.nn.Parameter(torch.Tensor(1, n_rel)))
-        self.tprev = torch.zeros(n_nodes, n_nodes)
-
-    def customCRW(
-            self,
-            A: torch.Tensor,  # shape [Nrel X NNodes X NNodes]
-            node_index: int,  # indice del nodo corrente
-            prel: torch.Tensor,  # shape[NNodes X Nrel X 1]
-            tprev: torch.Tensor,  # shape[NNodes X NNodes X 1]
-            wrel: torch.Tensor,  # shape[NRel X 1]
-    ):
-
-        Ac = torch.sum((wrel[None, :] * prel[node_index]).squeeze() * A, dim=0)  # shape NNodes X NNodes
-        D = torch.diag(torch.sum(Ac, dim=-1, keepdim=True).squeeze())  # shape NNodes X NNodes
-        M = torch.linalg.inv(D) * Ac  # NNodes X NNodes
-        t = tprev * M
-        return t
-
-    def relation_pred(
-            self,
-            inputs,  # words embedding   shape [Nwords X dim_embeddings = 768]
-            rels,  # relation of every embedding   shape [Nrel X dim_embeddings]
-    ):
-        ### relation prediction ###
-
-        # project reletion token's embedding into key memory
-        lin_proj = torch.nn.Linear(inputs.size(-1), inputs.size(-1), device='cuda:0')
-        q = lin_proj(inputs)  # torch.nn.Linear()
-
-        # normalization
-        qn = torch.nn.LayerNorm(q)
-
-        # dot-product similarity
-        dp = torch.dot(qn, rels)
-
-        # apply softmax
-        sftm = torch.nnSoftmax(dim=1)
-        distrib = sftm(dp)  # shape [Nwords X Nrelation X 1]
-
-        return distrib
-
-    def knowledge_integration(
-            self,
-            inputs,
-            node_embds,
-            residual_embds
-    ):
-
-        ### knowledge-injected LM ###
-
-        # compute residual connection
-        res_conn = torch.dot(inputs, node_embds)
-
-        # use value projection block
-        lin_proj = torch.nn.Linear(inputs.size(-1), inputs.size(-1))
-        V = lin_proj(res_conn, residual_embds)
-
-        # add the trasformed embedding
-        Vlm = residual_embds + V
-
-        # normalization
-        Vn = torch.nn.LayerNorm(Vlm)
-
-        return Vn
-
-    def forward(self,
-                    hidden_states,
-                    attention_mask=None,
-                    position_bias=None,
-                    encoder_hidden_states=None,
-                    encoder_attention_mask=None,
-                    encoder_decoder_position_bias=None,
-                    layer_head_mask=None,
-                    cross_attn_layer_head_mask=None,
-                    past_key_value=None,
-                    use_cache=None,
-                    output_attentions=None,
-                    token_index=None,  # index of the token
-                    node_index=None,  # index of the root node
-                    graph=None, # graph of the sentence
-                    edges=None, # embeddings of all the nodes
-                    rel=None, # relations
-                    enc_rel=None, # relations embeddings
-                    adj=None, # adjacency matrix
-                ):
-
-
-        self.execute_oreolm(
-            inputs_embeds=hidden_states,
-            token_index=token_index,
-            node_index=node_index,
-            graph=graph,
-            edges=edges,
-            adj=adj,
-            rel=rel
-            )
-
-
-    def execute_oreolm (self,
-                        inputs_embeds, # embeddings of all the tokens in the sentence
-                        token_index, # index of the token
-                        node_index, # index of the root node
-                        graph, # graph of the sentence
-                        edges, # embeddings of all the nodes, Vent
-                        adj,
-                        rel # relations embeddings
-                    ):
-        # token_embs shape [Nwords X dim_embeddings = 768]
-        # edges shape [Nwords X Nwords X Nrelation]
-        # A shape [Nrelation X Nwords X Nwords]
-
-        print('oreolm layer')
-        # pdb.set_trace()
-
-        # relation prediction
-        prels = self.relation_pred(inputs_embeds[token_index], rel)
-        # contextualized random walk
-        t = self.customCRW(adj, node_index, prels, self.tprev, self.wrel)
-        self.tprev = t
-        # knowledge integration
-        new_embds = self.knowledge_integration(t, edges, edges[node_index])
-
-        return new_embds
-
 
 class CustomGNNLayer(torch.nn.Module):
 
@@ -209,7 +75,7 @@ class CustomGNNLayer(torch.nn.Module):
         Returns:
             scores (list of lists): A list of lists containing the final scores for each embedding in each group.
         """
-
+        #pdb.set_trace()
         # Pad the groups to make them equally sized
         max_size = max(len(group) for group in k_nodes)
         groups_padded = [F.pad(group, (0, 0, 0, max_size - len(group))) for group in k_nodes]
@@ -259,7 +125,7 @@ class CustomGNNLayer(torch.nn.Module):
                 current_reasoning_path: AllReasoningPath = None,
                 rels_ids=None,  # ids of the relations in the memory
                 ):
-        #pdb.set_trace()
+
         """
         This layer is the core of the GNN-TOK. It takes as input the hidden states of the sentence and the graph and decide in which direction walk in the graph in order to
         get novel information. It returns the new hidden states of the sentence and the new reasoning path.
@@ -345,7 +211,8 @@ class CustomGNNLayer(torch.nn.Module):
                 for ns in end_nods:
                     # ns contains is the list of end nodes associated to cur_node and a rel.
                     # turn them into embedding using the memory matrix
-                    node_embs.append(torch.stack([torch.tensor(memory_embs[n]) for n in ns]))
+                    #node_embs.append(torch.stack([torch.tensor(memory_embs[n]) for n in ns]))
+                    node_embs.append(torch.stack([memory_embs[n].clone().detach().requires_grad_(True) for n in ns]))
                 # compute the scores associated to each embedding
                 # the function perform a self-attention between the query and the node_embs extracted before.
                 # the node_embs are of shape [n_rels, n_end_nodes, emb_dim]

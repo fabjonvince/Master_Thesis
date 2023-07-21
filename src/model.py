@@ -33,7 +33,7 @@ class GNNQA(pl.LightningModule):
     def __init__(self, model=None,
                  ids_to_rels=None,
                  ids_to_nodes=None,
-                 memory_embs=None,
+                 #memory_embs=None,
                  tokenizer=None,
                  save_dir=None,
                  model_lr=None,
@@ -52,7 +52,7 @@ class GNNQA(pl.LightningModule):
         self.ids_to_rels = ids_to_rels
         self.ids_to_nodes = ids_to_nodes
         # dictionary containing node embeddings
-        self.memory_embs = memory_embs
+        #self.memory_embs = memory_embs
 
         self.model_lr = model_lr
         self.gnn_lr = gnn_lr
@@ -136,10 +136,11 @@ class GNNQA(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         #pdb.set_trace()
         batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids = self.prepare_data_from_batch(batch)
+        memory_embs = self.generate_embeddings(graph)
 
         loss = self(input_ids=input_ids, attention_mask=attention_mask, labels=labels, gnn_triplets=graph,
                     gnn_mask=batch['gnn_mask'], rel_mask=batch['rel_mask'], current_reasoning_path=reasoning_path,
-                    memory_embs=self.memory_embs, rels_ids=rels_ids)[0]
+                    memory_embs=memory_embs, rels_ids=rels_ids)[0]
 
 
         self.log('train_loss', loss.item(), on_step=True, on_epoch=False, prog_bar=True)
@@ -148,24 +149,16 @@ class GNNQA(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         #pdb.set_trace()
         batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids = self.prepare_data_from_batch(batch)
-        print('Validation step')
-        # I want to print all the debug info to investigate the COOM problem
-        print('input_ids', input_ids.shape)
-        print('attention_mask', attention_mask.shape)
-        print('labels', labels.shape)
-        print('graph', len(graph))
-        print('reasoning_path', reasoning_path)
-        print('rels_ids', len(rels_ids))
-        # now I wanna print the memory used in gbs
-        print('Memory used before generation', torch.cuda.memory_allocated() / 1e9)
+        memory_embs = self.generate_embeddings(graph)
+
         with torch.no_grad():
             predictions = self.model.generate(input_ids=input_ids, gnn_triplets=graph,
                                        gnn_mask=batch['gnn_mask'], rel_mask=batch['rel_mask'],
                                        current_reasoning_path=reasoning_path,
-                                       memory_embs=self.memory_embs,
+                                       memory_embs=memory_embs,
                                        rels_ids=rels_ids, **gen_val_params)
         predictions = [self.tokenizer.decode(predictions[0], skip_special_tokens=True)]
-        print('Memory used after generation', torch.cuda.memory_allocated() / 1e9)
+
         if len(self.labels.split(',')) > 1:
             targets = batch[self.labels.split(',')[0]][self.labels.split(',')[1]]
         else:
@@ -178,12 +171,8 @@ class GNNQA(pl.LightningModule):
 
         val_metric = get_rouge_scores(predictions, targets)
         val_bs = get_bert_scores(predictions, targets)
-        print('Memory used after bertscores', torch.cuda.memory_allocated() / 1e9)
         val_bart = get_bartscore(predictions, targets)
-        print('Memory used after bart scores', torch.cuda.memory_allocated() / 1e9)
-        print('bert_scores', val_bs)
-        print('rouge_scores', val_metric)
-        print('bart_scores', val_bart)
+
         for k,v in val_metric.items():
             if k in self.val_metric:
                 self.val_metric[k].append(v)
@@ -211,17 +200,19 @@ class GNNQA(pl.LightningModule):
         if not 'graph' in self.val_metric:
             self.val_metric['graph'] = []
         self.val_metric['graph'].append(self.model.get_and_clean_reasoning_path().get_all_reasoning_path())
-        print('Memory used at the end of validation', torch.cuda.memory_allocated() / 1e9)
+        
         return
 
     def test_step(self, batch, batch_idx):
         #pdb.set_trace()
         batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids = self.prepare_data_from_batch(batch)
+        memory_embs = self.generate_embeddings(graph)
+
         with torch.no_grad():
             predictions = self.model.generate(input_ids=input_ids, gnn_triplets=graph,
                                               gnn_mask=batch['gnn_mask'], rel_mask=batch['rel_mask'],
                                               current_reasoning_path=reasoning_path,
-                                              memory_embs=self.memory_embs,
+                                              memory_embs=memory_embs,
                                               rels_ids=rels_ids, **gen_test_params)
         predictions = [self.tokenizer.decode(predictions[0], skip_special_tokens=True)]
         if len(self.labels.split(',')) > 1:
@@ -318,5 +309,15 @@ class GNNQA(pl.LightningModule):
             }
         }
 
+    # prende in input, lista di nodi, modello per embedding
+    def generate_embeddings(self, graph):
 
+        nodes = np.unique([s for s,_,_ in graph] + [e for _,_,e in graph])
+        memory_embs = {}
+        for node in nodes:
+            node_tok = self.tokenizer(node, padding='max_length', truncation=True, max_length=32,
+                                 return_tensors='pt')['input_ids'][0].to(self.device)
+            embedded = self.model.shared(node_tok)
+            memory_embs[node] = torch.mean(embedded, dim=0)
 
+        return  memory_embs

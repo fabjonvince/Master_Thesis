@@ -188,10 +188,10 @@ def graph_to_nodes_and_rel(triplets):
 """
 
 def extract_support_from_links(support, dataset):
+    txt = ''
     if dataset == 'din0s':
         txt = ' '.join(x['passage_text'] for x in support if x['is_selected'] == 1)
     elif dataset == 'aquamuse':
-        txt = ''
         if len(support) > 10:
             support = support[:10]
         for url in support:

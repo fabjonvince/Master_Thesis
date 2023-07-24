@@ -78,9 +78,9 @@ def get_args(default=False):
     # GNN Args
     argparser.add_argument('--layer_with_gnn', type=int, nargs='+', default=[1, 2], help='Layers with KIL')
     argparser.add_argument('--gnn_topk', type=int, default=2, help='Number of topk nodes to consider for each root node')
-    argparser.add_argument('--checkpoint_sentence_transformer', type=str, default='all-MiniLM-L12-v2',
-                           help='Load sentence transformer checkpoint')
-    argparser.add_argument('--sentence_transformer_embedding_size', type=int, default=768,
+    #argparser.add_argument('--checkpoint_sentence_transformer', type=str, default='all-MiniLM-L12-v2',
+                           #help='Load sentence transformer checkpoint')
+    argparser.add_argument('--embedding_size', type=int, default=768,
                            help='Sentence transformer embedding size')
     argparser.add_argument('--no_gnn', default=False, action='store_true', help='do not use gnn. To lunch baselines')
     argparser.add_argument('--gnn_lr', default=None, type=float, help='gnn learning rate')
@@ -265,6 +265,8 @@ def main(args):
         dataset['memory_rels'] = Dataset.from_pandas(pd.DataFrame(data=rembs))
         """
 
+        nodes_dict = {i: [word] for word, i in nodes_dict.items()}
+        rels_dict = {i: [word] for word, i in rels_dict.items()}
 
         dataset['memory_nodes'] = Dataset.from_pandas(pd.DataFrame.from_dict(data=nodes_dict))
         dataset['memory_rels'] = Dataset.from_pandas(pd.DataFrame.from_dict(data=rels_dict))
@@ -292,7 +294,7 @@ def main(args):
         # set total number of rel, nodes and gnn embs size
         setattr(args, 'n_rel', len(dataset['memory_rels'].features))
         setattr(args, 'n_nodes', len(dataset['memory_nodes'].features))
-        setattr(args, 'gnn_embs_size', args.sentence_transformer_embedding_size)
+        setattr(args, 'gnn_embs_size', args.embedding_size)
 
 
         # Next I take the date in gg_mm_yyyy format

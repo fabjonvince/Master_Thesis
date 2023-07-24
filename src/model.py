@@ -310,14 +310,25 @@ class GNNQA(pl.LightningModule):
         }
 
     # prende in input, lista di nodi, modello per embedding
-    def generate_embeddings(self, graph):
+    def generate_embeddings(self, graph, batch_size=64):
 
-        nodes = np.unique([s for s,_,_ in graph] + [e for _,_,e in graph])
+        nodes = []
+        nodes.extend([s for s, _, _ in graph] + [e for _, _, e in graph])
+        nodes = list(set(nodes))
+
         memory_embs = {}
-        for node in nodes:
-            node_tok = self.tokenizer(node, padding='max_length', truncation=True, max_length=32,
-                                 return_tensors='pt')['input_ids'][0].to(self.device)
-            embedded = self.model.shared(node_tok)
-            memory_embs[node] = torch.mean(embedded, dim=0)
+        # tokenize all the nodes together to take advantage of parallel processing of the GPU
+        node_tok = self.tokenizer(nodes, padding='max_length', truncation=True, max_length=32,
+                                  return_tensors='pt')['input_ids'].to(self.device)
 
-        return  memory_embs
+        # then loop through the batches of tokens and compute the embeddings
+        with torch.no_grad():
+            for i in range(0, len(nodes), batch_size):
+                selected_nodes_tokens = node_tok[i: i + batch_size]
+                embedded = self.model.shared(selected_nodes_tokens)
+                for j, node in enumerate(nodes[i: i + batch_size]):
+                    memory_embs[node] = torch.mean(embedded[j], dim=0).detach().cpu()
+
+        return memory_embs
+
+

@@ -212,7 +212,7 @@ class CustomGNNLayer(torch.nn.Module):
                     # ns contains is the list of end nodes associated to cur_node and a rel.
                     # turn them into embedding using the memory matrix
                     #node_embs.append(torch.stack([torch.tensor(memory_embs[n]) for n in ns]))
-                    node_embs.append(torch.stack([memory_embs[n].clone().detach().requires_grad_(True) for n in ns]))
+                    node_embs.append(torch.stack([torch.tensor(memory_embs[n]) for n in ns]))
                 # compute the scores associated to each embedding
                 # the function perform a self-attention between the query and the node_embs extracted before.
                 # the node_embs are of shape [n_rels, n_end_nodes, emb_dim]

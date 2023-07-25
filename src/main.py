@@ -256,8 +256,8 @@ def main(args):
         print('saving nodes and rels of the graphs')
 
         if args.dont_use_sentence_transformers:
-            nodes_dict = {i: [word] for word, i in nodes_dict.items()}
-            rels_dict = {i: [word] for word, i in rels_dict.items()}
+            nodes_dict = {word: [i] for word, i in nodes_dict.items()}
+            rels_dict = {word: [i] for word, i in rels_dict.items()}
 
             dataset['memory_nodes'] = Dataset.from_pandas(pd.DataFrame.from_dict(data=nodes_dict))
             dataset['memory_rels'] = Dataset.from_pandas(pd.DataFrame.from_dict(data=rels_dict))
@@ -363,14 +363,8 @@ def main(args):
         else:
             print(f'The model {args.model_method} is not supported')
 
-        if args.dataset_without_sentence_transformers:
-            # create dict with ID and word for each nodes and rels
-            nodes = {int(i): word[0] for i, word in dataset['memory_nodes'].to_dict().items()}
-            rels = {int(i): word[0] for i, word in dataset['memory_rels'].to_dict().items()}
-        else:
-            nodes = {i: word for i, word in enumerate(dataset['memory_nodes'].features)}
-            rels = {i: word for i, word in enumerate(dataset['memory_rels'].features)}
-
+        nodes = {i: word for i, word in enumerate(dataset['memory_nodes'].features)}
+        rels = {i: word for i, word in enumerate(dataset['memory_rels'].features)}
 
 
         gnnqa = GNNQA(model=model, ids_to_rels=rels, ids_to_nodes=nodes, memory_embs=dataset['memory_nodes'].to_dict(),

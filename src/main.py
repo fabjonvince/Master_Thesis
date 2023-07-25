@@ -45,6 +45,7 @@ def get_args(default=False):
     argparser.add_argument('--set_anomaly_detection', default=False, action='store_true', help='set torch.autograd.set_detect_anomaly(True) before main')
     argparser.add_argument('--only_dataset_creation', default=False, action='store_true', help='only create dataset')
     argparser.add_argument('--use_16bit', default=False, action='store_true', help='use 16bit precision')
+    argparser.add_argument('--dataset_without_sentence_transformers', default=False, action='store_true', help='dataset without sentence transformers')
 
 
     # Dataset args
@@ -56,6 +57,7 @@ def get_args(default=False):
     argparser.add_argument('--graph_depth', type=int, default=3, help='Graph depth')
     argparser.add_argument('--keyword_extraction_method', type=str, default='bert', help='kw extraction method')
     argparser.add_argument('--create_support_from_links', default=False, action='store_true', help='create support from links')
+    argparser.add_argument('--dont_use_sentence_transformers', default=False, action='store_true', help='use sentence transformers')
 
 
     # Training args
@@ -79,9 +81,9 @@ def get_args(default=False):
     # GNN Args
     argparser.add_argument('--layer_with_gnn', type=int, nargs='+', default=[1, 2], help='Layers with KIL')
     argparser.add_argument('--gnn_topk', type=int, default=2, help='Number of topk nodes to consider for each root node')
-    #argparser.add_argument('--checkpoint_sentence_transformer', type=str, default='all-MiniLM-L12-v2',
-                           #help='Load sentence transformer checkpoint')
-    argparser.add_argument('--embedding_size', type=int, default=768,
+    argparser.add_argument('--checkpoint_sentence_transformer', type=str, default='all-MiniLM-L12-v2',
+                           help='Load sentence transformer checkpoint')
+    argparser.add_argument('--embedding_size', type=int, default=384,
                            help='Sentence transformer embedding size')
     argparser.add_argument('--no_gnn', default=False, action='store_true', help='do not use gnn. To lunch baselines')
     argparser.add_argument('--gnn_lr', default=None, type=float, help='gnn learning rate')
@@ -253,24 +255,25 @@ def main(args):
 
         print('saving nodes and rels of the graphs')
 
-        """
-        # Load a pretrained model with all-MiniLM-L12-v2 checkpoint
-        st_model = SentenceTransformer('all-MiniLM-L12-v2') if device == 'cpu' else SentenceTransformer(
-            'all-MiniLM-L12-v2').cuda()
-        st_model.max_seq_length = 32
-        st_pars = {'convert_to_tensor': True, "batch_size": 256, "show_progress_bar": True}
-        # use st to all the nodes and rels of the graphs and save it to the dataset
-        nembs = create_memory(st_model, nodes, st_pars)
-        rembs = create_memory(st_model, rels, st_pars)
-        dataset['memory_nodes'] = Dataset.from_pandas(pd.DataFrame(data=nembs))
-        dataset['memory_rels'] = Dataset.from_pandas(pd.DataFrame(data=rembs))
-        """
+        if args.dont_use_sentence_transformers:
+            nodes_dict = {i: [word] for word, i in nodes_dict.items()}
+            rels_dict = {i: [word] for word, i in rels_dict.items()}
 
-        nodes_dict = {i: [word] for word, i in nodes_dict.items()}
-        rels_dict = {i: [word] for word, i in rels_dict.items()}
+            dataset['memory_nodes'] = Dataset.from_pandas(pd.DataFrame.from_dict(data=nodes_dict))
+            dataset['memory_rels'] = Dataset.from_pandas(pd.DataFrame.from_dict(data=rels_dict))
 
-        dataset['memory_nodes'] = Dataset.from_pandas(pd.DataFrame.from_dict(data=nodes_dict))
-        dataset['memory_rels'] = Dataset.from_pandas(pd.DataFrame.from_dict(data=rels_dict))
+        else:
+            # Load a pretrained model with all-MiniLM-L12-v2 checkpoint
+            st_model = SentenceTransformer('all-MiniLM-L12-v2') if device == 'cpu' else SentenceTransformer(
+                'all-MiniLM-L12-v2').cuda()
+            st_model.max_seq_length = 32
+            st_pars = {'convert_to_tensor': True, "batch_size": 256, "show_progress_bar": True}
+            # use st to all the nodes and rels of the graphs and save it to the dataset
+            nembs = create_memory(st_model, nodes, st_pars)
+            rembs = create_memory(st_model, rels, st_pars)
+            dataset['memory_nodes'] = Dataset.from_pandas(pd.DataFrame(data=nembs))
+            dataset['memory_rels'] = Dataset.from_pandas(pd.DataFrame(data=rembs))
+
 
         # save the dataset to disk
         dataset.save_to_disk(save_dir)
@@ -295,6 +298,8 @@ def main(args):
         # set total number of rel, nodes and gnn embs size
         setattr(args, 'n_rel', len(dataset['memory_rels'].features))
         setattr(args, 'n_nodes', len(dataset['memory_nodes'].features))
+        if args.create_embeddings_with_model:
+            args.embedding_size = 768
         setattr(args, 'gnn_embs_size', args.embedding_size)
 
 
@@ -358,7 +363,7 @@ def main(args):
         else:
             print(f'The model {args.model_method} is not supported')
 
-        if args.create_embeddings_with_model:
+        if args.dataset_without_sentence_transformers:
             # create dict with ID and word for each nodes and rels
             nodes = {int(i): word[0] for i, word in dataset['memory_nodes'].to_dict().items()}
             rels = {int(i): word[0] for i, word in dataset['memory_rels'].to_dict().items()}

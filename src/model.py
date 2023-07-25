@@ -139,11 +139,11 @@ class GNNQA(pl.LightningModule):
         #pdb.set_trace()
         batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids = self.prepare_data_from_batch(batch)
         if self.create_embeddings_with_model:
-            memory_embs = self.generate_embeddings(graph)
+            self.generate_embeddings(graph)
 
         loss = self(input_ids=input_ids, attention_mask=attention_mask, labels=labels, gnn_triplets=graph,
                     gnn_mask=batch['gnn_mask'], rel_mask=batch['rel_mask'], current_reasoning_path=reasoning_path,
-                    memory_embs=memory_embs, rels_ids=rels_ids)[0]
+                    memory_embs=self.memory_embs, rels_ids=rels_ids)[0]
 
 
         self.log('train_loss', loss.item(), on_step=True, on_epoch=False, prog_bar=True)
@@ -153,13 +153,13 @@ class GNNQA(pl.LightningModule):
         #pdb.set_trace()
         batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids = self.prepare_data_from_batch(batch)
         if self.create_embeddings_with_model:
-            memory_embs = self.generate_embeddings(graph)
+            self.generate_embeddings(graph)
 
         with torch.no_grad():
             predictions = self.model.generate(input_ids=input_ids, gnn_triplets=graph,
                                        gnn_mask=batch['gnn_mask'], rel_mask=batch['rel_mask'],
                                        current_reasoning_path=reasoning_path,
-                                       memory_embs=memory_embs,
+                                       memory_embs=self.memory_embs,
                                        rels_ids=rels_ids, **gen_val_params)
         predictions = [self.tokenizer.decode(predictions[0], skip_special_tokens=True)]
 
@@ -211,13 +211,13 @@ class GNNQA(pl.LightningModule):
         #pdb.set_trace()
         batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids = self.prepare_data_from_batch(batch)
         if self.create_embeddings_with_model:
-            memory_embs = self.generate_embeddings(graph)
+            self.generate_embeddings(graph)
 
         with torch.no_grad():
             predictions = self.model.generate(input_ids=input_ids, gnn_triplets=graph,
                                               gnn_mask=batch['gnn_mask'], rel_mask=batch['rel_mask'],
                                               current_reasoning_path=reasoning_path,
-                                              memory_embs=memory_embs,
+                                              memory_embs=self.memory_embs,
                                               rels_ids=rels_ids, **gen_test_params)
         predictions = [self.tokenizer.decode(predictions[0], skip_special_tokens=True)]
         if len(self.labels.split(',')) > 1:

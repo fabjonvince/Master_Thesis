@@ -7,7 +7,8 @@ import torch
 from torch import tensor
 
 from preprocess import load_with_pickle, from_triplets_of_ids_to_triplets_of_string
-from tools import AllReasoningPath, get_rouge_scores, get_bert_scores, get_bartscore
+from tools import AllReasoningPath, get_rouge_scores, get_bert_scores, get_bartscore, find_kg_pathes
+import nltk
 
 gen_val_params = {
     'max_length': 140,
@@ -41,6 +42,7 @@ class GNNQA(pl.LightningModule):
                  gnn_layers=None,
                  labels=None,
                  use_support_document=False,
+                 use_oracle_graphs=False,
                  ):
         super().__init__()
         if gnn_layers is None:
@@ -65,6 +67,10 @@ class GNNQA(pl.LightningModule):
         if self.use_support_document == True:
             self.tokenizer.add_special_tokens(
                 {"additional_special_tokens": tokenizer.additional_special_tokens + ["<SUPP_DOC_TOK>"]})
+        self.use_oracle_graphs = use_oracle_graphs
+        if self.use_oracle_graphs == True:
+            # I set stop word using NLTK
+            self.stop_words = nltk.corpus.stopwords.words('english')
 
     def forward(self,
                 input_ids,
@@ -88,9 +94,20 @@ class GNNQA(pl.LightningModule):
 
         return output.loss, output.logits
 
+    def get_all_pathes(self, keywords, answer, kg, max_path_length=3):
+        end_nodes = answer.tolower().split(' ')
+        end_nodes = [e for e in end_nodes if e not in self.stop_words]
+        all_pathes = []
+        for keyword in keywords:
+            for end_node in end_nodes:
+                path = find_kg_pathes(keyword, end_node, kg, max_path_length)
+                if path is not None:
+                    all_pathes.append(path)
+        return all_pathes
+
     # retrieve data from the batch for the next step
     def prepare_data_from_batch(self, batch):
-        #pdb.set_trace()
+        pdb.set_trace()
 
         if self.use_support_document == True and batch['support_documents'] != '':
             support_documents = batch['support_documents']
@@ -131,11 +148,16 @@ class GNNQA(pl.LightningModule):
         reasoning_path = AllReasoningPath()
         reasoning_path.set_root_nodes(keywords, 2)
 
-        return batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids
+        all_pathes = None
+        if self.use_oracle_graphs:
+            #pdb.set_trace()
+            all_pathes = self.get_all_pathes(keywords, answer, graph, max_path_length=3)
+
+        return batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids, all_pathes
 
     def training_step(self, batch, batch_idx):
         #pdb.set_trace()
-        batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids = self.prepare_data_from_batch(batch)
+        batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids, all_pathes = self.prepare_data_from_batch(batch)
         memory_embs = self.generate_embeddings(graph)
 
         loss = self(input_ids=input_ids, attention_mask=attention_mask, labels=labels, gnn_triplets=graph,

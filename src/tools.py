@@ -1,3 +1,5 @@
+import pdb
+
 import nltk
 import torch
 import numpy as np
@@ -260,3 +262,22 @@ class BARTScorer:
         ]
 
         print(self.score(src_list, tgt_list, batch_size))
+
+
+def find_kg_pathes(start, end, kg:list, max_distance=3):
+    if max_distance == 0:
+        return None
+    triplets = find_triplets(kg, end=end)
+    if len(triplets) == 0:
+        return None
+
+    final_trip = find_triplets(triplets, start=start)
+    if len(final_trip) != 0:
+        return [final_trip[0]]
+
+    for triplet in triplets:
+        new_end_node = triplet[0]
+        final_trip = find_kg_pathes(start, new_end_node, kg, max_distance-1)
+        if final_trip is not None:
+            final_trip.append(triplet)
+            return final_trip

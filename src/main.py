@@ -38,6 +38,8 @@ def get_args(default=False):
     # RUN Args
     argparser.add_argument('--run_info', type=str, default=None, help='Run info that will be added to run name')
     argparser.add_argument('--project', type=str, default='gnnqa_default_project', help='wandb project name')
+    argparser.add_argument('--wandb_project', type=str, default=None, help='[DEPRECATED] wandb project name')
+
     argparser.add_argument('--debug', action='store_true', help='Debug mode')
     argparser.add_argument('--dont_save', default=False, action='store_true', help='do not save the model')
     argparser.add_argument('--skip_test', default=False, action='store_true', help='skip test')
@@ -74,6 +76,7 @@ def get_args(default=False):
     argparser.add_argument('--model_lr', default=0.000001, type=float, help='model learning rate')
     argparser.add_argument('--use_profiler', default=False, action='store_true', help='use profiler')
     argparser.add_argument('--use_support_document', default=False, action='store_true', help='use support document')
+    argparser.add_argument('--use_oracle_graphs', default=False, action='store_true', help='use support sentence')
 
     # GNN Args
     argparser.add_argument('--layer_with_gnn', type=int, nargs='+', default=[1, 2], help='Layers with KIL')
@@ -363,7 +366,7 @@ def main(args):
         gnnqa = GNNQA(model=model, ids_to_rels=rels, ids_to_nodes=nodes,
                       tokenizer=tokenizer, save_dir=save_dir,
                       model_lr=args.model_lr, gnn_lr=args.gnn_lr, gnn_layers=args.layer_with_gnn, labels=answers_name,
-                      use_support_document=args.use_support_document)
+                      use_support_document=args.use_support_document, use_oracle_graph=args.use_oracle_graph)
 
         # create T5 question for each example
         dataset[train_name] = dataset[train_name].map(
@@ -398,6 +401,9 @@ def main(args):
 
 if __name__ == '__main__':
     args = get_args()
+    if args.wandb_project:
+        print('--wandb_project is deprecated, use --project instead')
+        setattr(args, 'project', args.wandb_project)
     if args.set_anomaly_detection:
         with torch.autograd.set_detect_anomaly(True):
             main(args)

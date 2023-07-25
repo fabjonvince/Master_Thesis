@@ -74,6 +74,7 @@ def get_args(default=False):
     argparser.add_argument('--model_lr', default=0.000001, type=float, help='model learning rate')
     argparser.add_argument('--use_profiler', default=False, action='store_true', help='use profiler')
     argparser.add_argument('--use_support_document', default=False, action='store_true', help='use support document')
+    argparser.add_argument('--create_embeddings_with_model', default=False, action='store_true', help='create embeddings with model')
 
     # GNN Args
     argparser.add_argument('--layer_with_gnn', type=int, nargs='+', default=[1, 2], help='Layers with KIL')
@@ -357,15 +358,21 @@ def main(args):
         else:
             print(f'The model {args.model_method} is not supported')
 
-        # create dict with ID and word for each nodes and rels
-        nodes = {int(i): word[0] for i, word in dataset['memory_nodes'].to_dict().items()}
-        rels = {int(i): word[0] for i, word in dataset['memory_rels'].to_dict().items()}
+        if args.create_embeddings_with_model:
+            # create dict with ID and word for each nodes and rels
+            nodes = {int(i): word[0] for i, word in dataset['memory_nodes'].to_dict().items()}
+            rels = {int(i): word[0] for i, word in dataset['memory_rels'].to_dict().items()}
+        else:
+            nodes = {i: word for i, word in enumerate(dataset['memory_nodes'].features)}
+            rels = {i: word for i, word in enumerate(dataset['memory_rels'].features)}
 
 
-        gnnqa = GNNQA(model=model, ids_to_rels=rels, ids_to_nodes=nodes,
+
+        gnnqa = GNNQA(model=model, ids_to_rels=rels, ids_to_nodes=nodes, memory_embs=dataset['memory_nodes'].to_dict(),
                       tokenizer=tokenizer, save_dir=save_dir,
                       model_lr=args.model_lr, gnn_lr=args.gnn_lr, gnn_layers=args.layer_with_gnn, labels=answers_name,
-                      use_support_document=args.use_support_document)
+                      use_support_document=args.use_support_document,
+                      create_embeddings_with_model=args.create_embeddings_with_model)
 
         # create T5 question for each example
         dataset[train_name] = dataset[train_name].map(

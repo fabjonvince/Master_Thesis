@@ -33,7 +33,7 @@ class GNNQA(pl.LightningModule):
     def __init__(self, model=None,
                  ids_to_rels=None,
                  ids_to_nodes=None,
-                 #memory_embs=None,
+                 memory_embs=None,
                  tokenizer=None,
                  save_dir=None,
                  model_lr=None,
@@ -41,6 +41,7 @@ class GNNQA(pl.LightningModule):
                  gnn_layers=None,
                  labels=None,
                  use_support_document=False,
+                 create_embeddings_with_model=False,
                  ):
         super().__init__()
         if gnn_layers is None:
@@ -52,7 +53,7 @@ class GNNQA(pl.LightningModule):
         self.ids_to_rels = ids_to_rels
         self.ids_to_nodes = ids_to_nodes
         # dictionary containing node embeddings
-        #self.memory_embs = memory_embs
+        self.memory_embs = memory_embs
 
         self.model_lr = model_lr
         self.gnn_lr = gnn_lr
@@ -65,6 +66,7 @@ class GNNQA(pl.LightningModule):
         if self.use_support_document == True:
             self.tokenizer.add_special_tokens(
                 {"additional_special_tokens": tokenizer.additional_special_tokens + ["<SUPP_DOC_TOK>"]})
+        self.create_embeddings_with_model = create_embeddings_with_model
 
     def forward(self,
                 input_ids,
@@ -136,7 +138,8 @@ class GNNQA(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         #pdb.set_trace()
         batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids = self.prepare_data_from_batch(batch)
-        memory_embs = self.generate_embeddings(graph)
+        if self.create_embeddings_with_model:
+            memory_embs = self.generate_embeddings(graph)
 
         loss = self(input_ids=input_ids, attention_mask=attention_mask, labels=labels, gnn_triplets=graph,
                     gnn_mask=batch['gnn_mask'], rel_mask=batch['rel_mask'], current_reasoning_path=reasoning_path,
@@ -149,7 +152,8 @@ class GNNQA(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         #pdb.set_trace()
         batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids = self.prepare_data_from_batch(batch)
-        memory_embs = self.generate_embeddings(graph)
+        if self.create_embeddings_with_model:
+            memory_embs = self.generate_embeddings(graph)
 
         with torch.no_grad():
             predictions = self.model.generate(input_ids=input_ids, gnn_triplets=graph,
@@ -206,7 +210,8 @@ class GNNQA(pl.LightningModule):
     def test_step(self, batch, batch_idx):
         #pdb.set_trace()
         batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids = self.prepare_data_from_batch(batch)
-        memory_embs = self.generate_embeddings(graph)
+        if self.create_embeddings_with_model:
+            memory_embs = self.generate_embeddings(graph)
 
         with torch.no_grad():
             predictions = self.model.generate(input_ids=input_ids, gnn_triplets=graph,
@@ -316,7 +321,7 @@ class GNNQA(pl.LightningModule):
         nodes.extend([s for s, _, _ in graph] + [e for _, _, e in graph])
         nodes = list(set(nodes))
 
-        memory_embs = {}
+        self.memory_embs = {}
         # tokenize all the nodes together to take advantage of parallel processing of the GPU
         node_tok = self.tokenizer(nodes, padding='max_length', truncation=True, max_length=32,
                                   return_tensors='pt')['input_ids'].to(self.device)
@@ -327,8 +332,8 @@ class GNNQA(pl.LightningModule):
                 selected_nodes_tokens = node_tok[i: i + batch_size]
                 embedded = self.model.shared(selected_nodes_tokens)
                 for j, node in enumerate(nodes[i: i + batch_size]):
-                    memory_embs[node] = torch.mean(embedded[j], dim=0).detach().cpu()
+                    self.memory_embs[node] = torch.mean(embedded[j], dim=0).detach().cpu()
 
-        return memory_embs
+        return
 
 

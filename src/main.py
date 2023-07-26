@@ -238,24 +238,25 @@ def main(args):
 
 
         print('saving nodes and rels of the graphs')
-        dataset['memory_nodes'] = Dataset.from_pandas(pd.DataFrame.from_dict(data=nodes_dict))
-        dataset['memory_rels'] = Dataset.from_pandas(pd.DataFrame.from_dict(data=rels_dict))
 
-        """
-        # Load a pretrained model with all-MiniLM-L12-v2 checkpoint
-        st_model = SentenceTransformer('all-MiniLM-L12-v2') if device == 'cpu' else SentenceTransformer(
-            'all-MiniLM-L12-v2').cuda()
-        st_model.max_seq_length = 32
-        st_pars = {'convert_to_tensor': True, "batch_size": 256, "show_progress_bar": True}
-        # use st to all the nodes and rels of the graphs and save it to the dataset
-        nembs = create_memory(st_model, nodes, st_pars)
-        rembs = create_memory(st_model, rels, st_pars)
-        dataset['memory_nodes'] = Dataset.from_pandas(pd.DataFrame(data=nembs))
-        dataset['memory_rels'] = Dataset.from_pandas(pd.DataFrame(data=rembs))
-        """
+        if args.dont_use_sentence_transformers:
+            nodes_dict = {word: [i] for word, i in nodes_dict.items()}
+            rels_dict = {word: [i] for word, i in rels_dict.items()}
 
+            dataset['memory_nodes'] = Dataset.from_pandas(pd.DataFrame.from_dict(data=nodes_dict))
+            dataset['memory_rels'] = Dataset.from_pandas(pd.DataFrame.from_dict(data=rels_dict))
 
-
+        else:
+            # Load a pretrained model with all-MiniLM-L12-v2 checkpoint
+            st_model = SentenceTransformer('all-MiniLM-L12-v2') if device == 'cpu' else SentenceTransformer(
+                'all-MiniLM-L12-v2').cuda()
+            st_model.max_seq_length = 32
+            st_pars = {'convert_to_tensor': True, "batch_size": 256, "show_progress_bar": True}
+            # use st to all the nodes and rels of the graphs and save it to the dataset
+            nembs = create_memory(st_model, nodes, st_pars)
+            rembs = create_memory(st_model, rels, st_pars)
+            dataset['memory_nodes'] = Dataset.from_pandas(pd.DataFrame(data=nembs))
+            dataset['memory_rels'] = Dataset.from_pandas(pd.DataFrame(data=rembs))
 
 
         # save the dataset to disk
@@ -281,7 +282,9 @@ def main(args):
         # set total number of rel, nodes and gnn embs size
         setattr(args, 'n_rel', len(dataset['memory_rels'].features))
         setattr(args, 'n_nodes', len(dataset['memory_nodes'].features))
-        setattr(args, 'gnn_embs_size', args.sentence_transformer_embedding_size)
+        if args.create_embeddings_with_model:
+            args.embedding_size = 768
+        setattr(args, 'gnn_embs_size', args.embedding_size)
 
 
         # Next I take the date in gg_mm_yyyy format

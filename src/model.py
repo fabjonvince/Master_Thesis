@@ -178,7 +178,7 @@ class GNNQA(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         #pdb.set_trace()
-        batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids = self.prepare_data_from_batch(batch)
+        batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids, _ = self.prepare_data_from_batch(batch)
         if self.create_embeddings_with_model:
             self.generate_embeddings(graph)
 

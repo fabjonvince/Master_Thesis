@@ -189,13 +189,9 @@ def main(args):
         dataset[test_name] = dataset[test_name].map(
             lambda example: {'question': add_special_tokens(example[question_name], example['keywords'])})
 
-        dataset['memory_nodes'] = Dataset.from_pandas(pd.DataFrame.from_dict(data=nodes_dict))
-        dataset['memory_rels'] = Dataset.from_pandas(pd.DataFrame.from_dict(data=rels_dict))
 
         # Now I extract the main keyword of the answer
         if args.create_oracle_graphs:
-            nodes = {i: word for i, word in enumerate(dataset['memory_nodes'].features)}
-            rels = {i: word for i, word in enumerate(dataset['memory_rels'].features)}
             dataset[train_name] = dataset[train_name].map(
                 lambda example: {'answer_keyword': extract_keyword_from_text(example['question'], args)})
 
@@ -205,8 +201,10 @@ def main(args):
             dataset[test_name] = dataset[test_name].map(
                 lambda example: {'answer_keyword': extract_keyword_from_text(example['question'], args)})
 
+            id_to_node = {v: k for k, v in nodes_dict.items()}
+            id_to_rel = {v: k for k, v in rels_dict.items()}
             dataset[train_name] = dataset[train_name].map(
-                lambda example: {'oracle_graphs': create_oracle_graph(example, nodes, rels)})
+                lambda example: {'oracle_graphs': create_oracle_graph(example, id_to_node, id_to_rel)})
 
 
 
@@ -240,6 +238,8 @@ def main(args):
 
 
         print('saving nodes and rels of the graphs')
+        dataset['memory_nodes'] = Dataset.from_pandas(pd.DataFrame.from_dict(data=nodes_dict))
+        dataset['memory_rels'] = Dataset.from_pandas(pd.DataFrame.from_dict(data=rels_dict))
 
         """
         # Load a pretrained model with all-MiniLM-L12-v2 checkpoint

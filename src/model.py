@@ -109,7 +109,7 @@ class GNNQA(pl.LightningModule):
 
     # retrieve data from the batch for the next step
     def prepare_data_from_batch(self, batch):
-        pdb.set_trace()
+        #pdb.set_trace()
 
         if self.use_support_document == True and batch['support_documents'] != '':
             support_documents = batch['support_documents']

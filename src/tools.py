@@ -286,7 +286,6 @@ def find_kg_pathes(start, end, kg:list, max_distance=3):
 
 
 def create_oracle_graph(row, ids_to_nodes, ids_to_rels):
-    pdb.set_trace()
     keysq = row['keywords']
     keysa = row['answer_keyword']
     graph = row['graph']

@@ -59,6 +59,7 @@ def get_args(default=False):
     argparser.add_argument('--graph_depth', type=int, default=3, help='Graph depth')
     argparser.add_argument('--keyword_extraction_method', type=str, default='rake', help='kw extraction method')
     argparser.add_argument('--create_support_from_links', default=False, action='store_true', help='create support from links')
+    argparser.add_argument('--dont_use_sentence_transformers', default=False, action='store_true', help='use sentence transformers')
     argparser.add_argument('--create_oracle_graphs', default=False, action='store_true', help='create oracle')
 
 
@@ -85,7 +86,9 @@ def get_args(default=False):
     argparser.add_argument('--gnn_topk', type=int, default=2, help='Number of topk nodes to consider for each root node')
     argparser.add_argument('--checkpoint_sentence_transformer', type=str, default='all-MiniLM-L12-v2',
                            help='Load sentence transformer checkpoint')
-    argparser.add_argument('--sentence_transformer_embedding_size', type=int, default=768,
+    argparser.add_argument('--sentence_transformer_embedding_size', type=int, default=None,
+                           help='[DEPRECATED use embedding_size] Sentence transformer embedding size')
+    argparser.add_argument('--embedding_size', type=int, default=384,
                            help='Sentence transformer embedding size')
     argparser.add_argument('--no_gnn', default=False, action='store_true', help='do not use gnn. To lunch baselines')
     argparser.add_argument('--gnn_lr', default=None, type=float, help='gnn learning rate')
@@ -397,6 +400,9 @@ if __name__ == '__main__':
     if args.wandb_project:
         print('--wandb_project is deprecated, use --project instead')
         setattr(args, 'project', args.wandb_project)
+    if args.sentence_transformer_embedding_size:
+        print('--sentence_transformer_embedding_size is deprecated, use --embedding_size instead')
+        setattr(args, 'embedding_size', args.sentence_transformer_embedding_size)
     if args.set_anomaly_detection:
         with torch.autograd.set_detect_anomaly(True):
             main(args)

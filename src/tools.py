@@ -2,13 +2,15 @@ import pdb
 
 import nltk
 import torch
-import numpy as np
 from datasets import load_metric
 import torch.nn as nn
 import traceback
 from transformers import BartTokenizer, BartForConditionalGeneration
 from typing import List
 import numpy as np
+
+from data import get_dataset
+from preprocess import from_triplets_of_ids_to_triplets_of_string
 
 
 class SingleReasoningPath:
@@ -281,3 +283,27 @@ def find_kg_pathes(start, end, kg:list, max_distance=3):
         if final_trip is not None:
             final_trip.append(triplet)
             return final_trip
+
+
+def create_oracle_graph(row, ids_to_nodes, ids_to_rels):
+    pdb.set_trace()
+    keysq = row['keywords']
+    keysa = row['answer_keyword']
+    graph = row['graph']
+    if graph[-3:] != 'npy':  # add the extension if it is not present
+        graph = graph + '.npy'
+    graph = np.load(graph)  # the graph contains triplets of int that are indices of nodes and rels
+
+    kg = from_triplets_of_ids_to_triplets_of_string(graph, ids_to_nodes, ids_to_rels)  # convert the triplets of ids to triplets of string
+
+    graphs = dict()
+    for keyq in keysq:
+        kgraphs = list()
+        for keya in keysa:
+            kgraph = find_kg_pathes(keyq, keya, kg)
+            if kgraph is not None:
+                kgraphs.append(kgraph)
+        graphs[keyq] = kgraphs
+    return graphs
+
+

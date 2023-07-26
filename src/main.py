@@ -13,10 +13,11 @@ from datasets import load_from_disk, Dataset
 from transformers import T5Tokenizer
 import wandb
 from preprocess import text_to_graph_concept, add_special_tokens, create_memory, \
-    get_node_and_rel_dict, extract_support_from_links
+    get_node_and_rel_dict, extract_support_from_links, extract_keyword_from_text
 from data import get_dataset, name_mapping
 from model import GNNQA
 from bart import BartGNNForConditionalGeneration
+from tools import create_oracle_graph
 from t5 import T5GNNForConditionalGeneration, available_reporjection_activations
 from pytorch_lightning import Trainer
 from sentence_transformers import SentenceTransformer
@@ -56,8 +57,9 @@ def get_args(default=False):
     argparser.add_argument('--val_samples', type=int, default=None, help='Number of validation samples')
     argparser.add_argument('--test_samples', type=int, default=None, help='Number of test samples')
     argparser.add_argument('--graph_depth', type=int, default=3, help='Graph depth')
-    argparser.add_argument('--keyword_extraction_method', type=str, default='bert', help='kw extraction method')
+    argparser.add_argument('--keyword_extraction_method', type=str, default='rake', help='kw extraction method')
     argparser.add_argument('--create_support_from_links', default=False, action='store_true', help='create support from links')
+    argparser.add_argument('--create_oracle_graphs', default=False, action='store_true', help='create oracle')
 
 
     # Training args
@@ -160,8 +162,6 @@ def main(args):
         print("Adding row_id done")
 
         # Now add the rows: keywords, question, graph
-        #dataset[train_name] = dataset[train_name].map(
-            #lambda example: {'keywords': text_to_keywords(example[question_name])})
 
         dataset[train_name] = dataset[train_name].map(
             lambda example: text_to_graph_concept(args.graph_depth, example[question_name], save_dir + '/graphs/',
@@ -171,19 +171,6 @@ def main(args):
         dataset[train_name] = dataset[train_name].map(
             lambda example: {'question': add_special_tokens(example[question_name], example['keywords'])})
 
-        # dataset[train_name] = dataset[train_name].map(
-        # lambda example: tokenizer(example['question'], padding='max_length', truncation=True, max_length=args.max_length, return_tensors='pt'))
-
-        # dataset[train_name] = dataset[train_name].map(
-        # lambda example: {'answer_tok': tokenizer(example[answers_name]['text'], padding='max_length', truncation=True, max_length=512, return_tensors='pt')})
-
-
-
-        # dataset[train_name] = dataset[train_name].map(
-        #    lambda example: graph_to_nodes_and_rel(example['graph']))
-
-        #dataset[val_name] = dataset[val_name].map(
-            #lambda example: {'keywords': text_to_keywords(example[question_name])})
 
         dataset[val_name] = dataset[val_name].map(
             lambda example:text_to_graph_concept(args.graph_depth, example[question_name], save_dir + '/graphs/',
@@ -193,19 +180,6 @@ def main(args):
         dataset[val_name] = dataset[val_name].map(
             lambda example: {'question': add_special_tokens(example[question_name], example['keywords'])})
 
-        # dataset[val_name] = dataset[val_name].map(
-        # lambda example: tokenizer(example['question'], padding='max_length', truncation=True, max_length=args.max_length, return_tensors='pt'))
-
-        # dataset[val_name] = dataset[val_name].map(
-        # lambda example: {'answer_tok': tokenizer(example[answers_name]['text'], padding='max_length', truncation=True, max_length=512, return_tensors='pt')})
-
-
-
-        # dataset[val_name] = dataset[val_name].map(
-        #    lambda example: graph_to_nodes_and_rel(example['graph']))
-
-        #dataset[test_name] = dataset[test_name].map(
-            #lambda example: {'keywords': text_to_keywords(example[question_name])})
 
         dataset[test_name] = dataset[test_name].map(
             lambda example: text_to_graph_concept(args.graph_depth, example[question_name], save_dir + '/graphs/',
@@ -215,18 +189,27 @@ def main(args):
         dataset[test_name] = dataset[test_name].map(
             lambda example: {'question': add_special_tokens(example[question_name], example['keywords'])})
 
+        dataset['memory_nodes'] = Dataset.from_pandas(pd.DataFrame.from_dict(data=nodes_dict))
+        dataset['memory_rels'] = Dataset.from_pandas(pd.DataFrame.from_dict(data=rels_dict))
+
+        # Now I extract the main keyword of the answer
+        if args.create_oracle_graphs:
+            nodes = {i: word for i, word in enumerate(dataset['memory_nodes'].features)}
+            rels = {i: word for i, word in enumerate(dataset['memory_rels'].features)}
+            dataset[train_name] = dataset[train_name].map(
+                lambda example: {'answer_keyword': extract_keyword_from_text(example['question'], args)})
+
+            dataset[val_name] = dataset[val_name].map(
+                lambda example: {'answer_keyword': extract_keyword_from_text(example['question'], args)})
+
+            dataset[test_name] = dataset[test_name].map(
+                lambda example: {'answer_keyword': extract_keyword_from_text(example['question'], args)})
+
+            dataset[train_name] = dataset[train_name].map(
+                lambda example: {'oracle_graphs': create_oracle_graph(example, nodes, rels)})
 
 
-        # dataset[test_name] = dataset[test_name].map(
-        # lambda example: tokenizer(example['question'], padding='max_length', truncation=True, max_length=args.max_length, return_tensors='pt'))
 
-        # dataset[test_name] = dataset[test_name].map(
-        # lambda example: {'answer_tok': tokenizer(example[answers_name]['text'], padding='max_length', truncation=True, max_length=512, return_tensors='pt')})
-
-
-
-        # dataset[test_name] = dataset[test_name].map(
-        #    lambda example: graph_to_nodes_and_rel(example['graph']))
 
         print('The number of nodes is:  ', len(nodes))
         print('The number of relations is:  ', len(rels))
@@ -251,6 +234,9 @@ def main(args):
 
                 dataset[test_name] = dataset[test_name].map(
                     lambda example: {'support_documents': extract_support_from_links(example[support_doc_name], args.dataset)})
+            else:
+                print('creating support documents from links is not supported for this dataset')
+
 
 
         print('saving nodes and rels of the graphs')
@@ -269,8 +255,8 @@ def main(args):
         """
 
 
-        dataset['memory_nodes'] = Dataset.from_pandas(pd.DataFrame.from_dict(data=nodes_dict))
-        dataset['memory_rels'] = Dataset.from_pandas(pd.DataFrame.from_dict(data=rels_dict))
+
+
 
         # save the dataset to disk
         dataset.save_to_disk(save_dir)
@@ -342,6 +328,10 @@ def main(args):
         else:
             save_dir = None
 
+        # create dict with ID and word for each nodes and rels
+        nodes = {i: word for i, word in enumerate(dataset['memory_nodes'].features)}
+        rels = {i: word for i, word in enumerate(dataset['memory_rels'].features)}
+
         if args.no_gnn:
             layer_with_gnn = []
             setattr(args, 'layer_with_gnn', layer_with_gnn)
@@ -359,14 +349,14 @@ def main(args):
             print(f'The model {args.model_method} is not supported')
 
         # create dict with ID and word for each nodes and rels
-        nodes = {int(i): word[0] for i, word in dataset['memory_nodes'].to_dict().items()}
-        rels = {int(i): word[0] for i, word in dataset['memory_rels'].to_dict().items()}
+        #nodes = {int(i): word[0] for i, word in dataset['memory_nodes'].to_dict().items()}
+        #rels = {int(i): word[0] for i, word in dataset['memory_rels'].to_dict().items()}
 
 
         gnnqa = GNNQA(model=model, ids_to_rels=rels, ids_to_nodes=nodes,
                       tokenizer=tokenizer, save_dir=save_dir,
                       model_lr=args.model_lr, gnn_lr=args.gnn_lr, gnn_layers=args.layer_with_gnn, labels=answers_name,
-                      use_support_document=args.use_support_document, use_oracle_graph=args.use_oracle_graph)
+                      use_support_document=args.use_support_document, use_oracle_graphs=args.use_oracle_graphs)
 
         # create T5 question for each example
         dataset[train_name] = dataset[train_name].map(

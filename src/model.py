@@ -95,7 +95,7 @@ class GNNQA(pl.LightningModule):
         return output.loss, output.logits
 
     def get_all_pathes(self, keywords, answer, kg, max_path_length=3):
-        end_nodes = answer.tolower().split(' ')
+        end_nodes = answer.lower().split(' ')
         end_nodes = [e for e in end_nodes if e not in self.stop_words]
         all_pathes = []
         for keyword in keywords:
@@ -150,8 +150,13 @@ class GNNQA(pl.LightningModule):
 
         all_pathes = None
         if self.use_oracle_graphs:
-            #pdb.set_trace()
-            all_pathes = self.get_all_pathes(keywords, answer, graph, max_path_length=3)
+            if 'oracle_graphs' in batch:
+                all_pathes = batch['oracle_graphs']
+            else:
+                #pdb.set_trace()
+                if type(answer) == list:
+                    answer = answer[0]
+                all_pathes = self.get_all_pathes(keywords, answer, graph, max_path_length=3)
 
         return batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids, all_pathes
 
@@ -170,7 +175,7 @@ class GNNQA(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         #pdb.set_trace()
-        batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids = self.prepare_data_from_batch(batch)
+        batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids, _ = self.prepare_data_from_batch(batch)
         memory_embs = self.generate_embeddings(graph)
 
         with torch.no_grad():
@@ -227,7 +232,7 @@ class GNNQA(pl.LightningModule):
 
     def test_step(self, batch, batch_idx):
         #pdb.set_trace()
-        batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids = self.prepare_data_from_batch(batch)
+        batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids, _ = self.prepare_data_from_batch(batch)
         memory_embs = self.generate_embeddings(graph)
 
         with torch.no_grad():

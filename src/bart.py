@@ -36,6 +36,7 @@ class BartGNNForConditionalGeneration(BartPretrainedModel):
         config.reprojection_activation = args.reprojection_activation
 
         self.model = BartGNNModel(config)
+        self.args = args
         self.register_buffer("final_logits_bias", torch.zeros((1, self.model.shared.num_embeddings)))
         self.lm_head = nn.Linear(config.d_model, self.model.shared.num_embeddings, bias=False)
 

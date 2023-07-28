@@ -32,6 +32,10 @@ class CustomGNNLayer(torch.nn.Module):
                  model_size,
                  topk=2,
                  reprojection_activation='tanh',
+                 use_oracle_rel = False,
+                 use_oracle_nodes = False,
+                 layer_position = None,
+                 force_target_path = False,
                  ):
         super().__init__()
         self.embs_size = embs_size
@@ -62,6 +66,12 @@ class CustomGNNLayer(torch.nn.Module):
 
         # Now the reprojection layer to inject graph knowledge into the GNN-TOK
         self.gnn_reprj = torch.nn.Sequential(torch.nn.Linear(self.embs_size, self.model_size), not_linear_func)
+
+        #set up for oracles
+        self.use_oracle_rel = use_oracle_rel
+        self.use_oracle_nodes = use_oracle_nodes
+        self.layer_position = layer_position
+        self.force_target_path = force_target_path
 
     def calculate_scores(self, query, k_nodes, probabilities):
         """
@@ -160,7 +170,17 @@ class CustomGNNLayer(torch.nn.Module):
         # I generate the probability over all the relations
         rel_prob = self.classification_head(hidden_states[rel_mask.bool()])
         # rel_prob shape (batch_size=1, num_rels)
-
+        if self.use_oracle_rel and current_reasoning_path.targets_rel is not None:
+            pdb.set_trace()
+            oracle_rel = current_reasoning_path.targets_rel
+            targets = []
+            for i, rel, target in enumerate(zip(rel_prob, oracle_rel)):
+                current_target = target[self.layer_position]
+                criterion = torch.nn.CrossEntropyLoss()
+                loss = criterion(rel, current_target)
+                current_reasoning_path.add_rel_loss(loss)
+                targets.append(current_target)
+            rel_prob = torch.stack(targets)
         current_nodes = current_reasoning_path.get_current_nodes()
         # now current nodes is a dict where k arep the root nodes and v are a list of topk elements representing the current node
 
@@ -262,7 +282,13 @@ class CustomGNNLayer(torch.nn.Module):
                         keep = False
 
                 # Add the most probable node to the reasoning path
-                current_reasoning_path.add_new_step(root_word, k, next_node[0], next_node[1], value[index])
+                if current_reasoning_path.target_path and self.force_target_path:
+                    # In this case I force the oracle graph
+                    target_path = current_reasoning_path.target_path
+                    _, rel, node = target_path[root_word][k][self.layer_position]
+                    current_reasoning_path.add_new_step(root_word, k, rel, node, 1/self.topk)
+                else:
+                    current_reasoning_path.add_new_step(root_word, k, next_node[0], next_node[1], value[index])
                 all_scores.append(mean_emb)
             all_scores = torch.stack(all_scores).mean(dim=0)
             output.append(all_scores)
@@ -279,7 +305,7 @@ class CustomGNNLayer(torch.nn.Module):
         return hidden_states, current_reasoning_path
 
 class T5GNNBlock(nn.Module):
-    def __init__(self, config, has_relative_attention_bias=False):
+    def __init__(self, config, has_relative_attention_bias=False, layer_position=None):
         super().__init__()
         self.is_decoder = config.is_decoder
         self.layer = nn.ModuleList()
@@ -290,7 +316,8 @@ class T5GNNBlock(nn.Module):
         self.layer.append(T5LayerFF(config))
         self.layer.append(CustomGNNLayer(
             n_rel=config.n_rel, embs_size=config.gnn_embs_size, model_size=config.d_model, topk=config.gnn_topk,
-            reprojection_activation=config.reprojection_activation
+            reprojection_activation=config.reprojection_activation, use_oracle_rel=config.use_oracle_rel,
+            use_oracle_nodes=config.use_oracle_nodes, layer_position=layer_position, force_target_path=config.force_target_path,
         ))
 
     def forward(
@@ -425,7 +452,7 @@ class T5GNNStack(T5PreTrainedModel):
         for i in range(config.num_layers):
             if i in config.layer_with_gnn:
                 print('Altering layer {} with GNN'.format(i))
-                layers.append(T5GNNBlock(config, has_relative_attention_bias=bool(i == 0)))
+                layers.append(T5GNNBlock(config, has_relative_attention_bias=bool(i == 0), layer_position=i))
             else:
                 layers.append(T5Block(config, has_relative_attention_bias=bool(i == 0)))
         self.block = nn.ModuleList(layers)
@@ -758,10 +785,9 @@ class T5GNNForConditionalGeneration(T5PreTrainedModel):
 
     def __init__(self, config: T5Config, args=None):
         super().__init__(config)
-
         self.model_dim = config.d_model
         self.shared = nn.Embedding(config.vocab_size, config.d_model)
-
+        self.args = args
         encoder_config = copy.deepcopy(config)
         encoder_config.is_decoder = False
         encoder_config.use_cache = False
@@ -771,6 +797,9 @@ class T5GNNForConditionalGeneration(T5PreTrainedModel):
         encoder_config.gnn_topk = args.gnn_topk
         encoder_config.gnn_embs_size = args.gnn_embs_size
         encoder_config.reprojection_activation = args.reprojection_activation
+        encoder_config.use_oracle_rel = args.use_oracle_rel
+        encoder_config.use_oracle_nodes = args.use_oracle_nodes
+        encoder_config.force_target_path = args.force_target_path
         self.encoder = T5GNNStack(encoder_config, self.shared)
 
         decoder_config = copy.deepcopy(config)

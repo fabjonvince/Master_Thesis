@@ -1,12 +1,11 @@
 import pdb
-
+import random
 import numpy as np
 import pandas as pd
 import pytorch_lightning as pl
 import torch
-from torch import tensor
 
-from preprocess import load_with_pickle, from_triplets_of_ids_to_triplets_of_string
+from preprocess import from_triplets_of_ids_to_triplets_of_string
 from tools import AllReasoningPath, get_rouge_scores, get_bert_scores, get_bartscore, find_kg_pathes
 import nltk
 
@@ -108,7 +107,7 @@ class GNNQA(pl.LightningModule):
         return all_pathes
 
     # retrieve data from the batch for the next step
-    def prepare_data_from_batch(self, batch):
+    def prepare_data_from_batch(self, batch, skip_oracle_graph_creation=False):
         #pdb.set_trace()
 
         if self.use_support_document == True and batch['support_documents'] != '':
@@ -151,34 +150,102 @@ class GNNQA(pl.LightningModule):
         reasoning_path.set_root_nodes(keywords, 2)
 
         all_pathes = None
-        if self.use_oracle_graphs:
-            if 'oracle_graphs' in batch:
-                all_pathes = batch['oracle_graphs']
-            else:
-                #pdb.set_trace()
-                if type(answer) == list:
-                    answer = answer[0]
-                all_pathes = self.get_all_pathes(keywords, answer, graph, max_path_length=3)
+        if not skip_oracle_graph_creation:
+            if self.use_oracle_graphs:
+                if 'oracle_graphs' in batch:
+                    all_pathes = batch['oracle_graphs']
+                else:
+                    #pdb.set_trace()
+                    if type(answer) == list:
+                        answer = answer[0]
+                    all_pathes = self.get_all_pathes(keywords, answer, graph, max_path_length=3)
 
         return batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids, all_pathes
 
+    def prepare_for_oracle_graph_training(self, all_pathes):
+        if all_pathes is not None:
+            raise NotImplementedError('Oracle graphs not implemented yet')
+        else:
+            rel_target_dict = {}
+            node_target_dict = {}
+            for k, paths in all_pathes.items():
+                rel_targets = []
+                node_targets = []
+                for i in range(len(paths[0])):
+                    rs = [path[i][1] for path in paths]
+                    rids = [self.rels_to_ids[r] for r in rs]
+                    len_r = len(self.rels_to_ids)
+                    rel_target = torch.zeros(len_r, dtype=self.dtype)
+                    value = 1 / len(rids)
+                    for rid in rids:
+                        rel_target[rid] = rel_target[rid] + value
+                    rel_target = rel_target.to(self.device)
+                    rel_targets.append(rel_target)
+
+                    # now the last nodes
+                    ns = [path[i][2] for path in paths]
+                    nids = [self.nodes_to_ids[n] for n in ns]
+                    len_n = len(self.nodes_to_ids)
+                    node_target = torch.zeros(len_n)
+                    value = 1 / len(nids)
+                    for nid in nids:
+                        node_target[nid] = node_target[nid] + value
+                    node_target = node_target.to(self.device)
+                    node_targets.append(node_target)
+                rel_target_dict[k] = rel_targets
+                node_target_dict[k] = node_targets
+            return rel_target_dict, node_target_dict
+
+    def prepare_target_graphs(self, all_paths, k):
+        target_paths = {}
+        for key, paths in all_paths.item():
+            if len(paths) > k:
+                # I select k path at random
+                paths = random.sample(paths, k)
+            else:
+                # I select all the paths, and repeat them until I have k paths
+                paths = paths * (k // len(paths)) + paths[:k % len(paths)]
+            target_paths[key] = paths
+        return target_paths
+
     def training_step(self, batch, batch_idx):
-        #pdb.set_trace()
+        pdb.set_trace()
         batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids, all_pathes = self.prepare_data_from_batch(batch)
         if self.create_embeddings_with_model:
             self.generate_embeddings(graph)
+        pdb.set_trace()
+        if self.use_oracle_graphs:
+            # target is a dictionary where k are keywords and v are probability distribution, one for each triplet in the all_paths.
+            targets_rel, targets_node = self.prepare_for_oracle_graph_training(all_pathes)
+            targets = self.prepare_target_graphs(all_pathes, self.model.args.gnn_topk)
+            reasoning_path.set_targets(targets_rel, targets_node, targets)
+
+
+
+
 
         loss = self(input_ids=input_ids, attention_mask=attention_mask, labels=labels, gnn_triplets=graph,
                     gnn_mask=batch['gnn_mask'], rel_mask=batch['rel_mask'], current_reasoning_path=reasoning_path,
                     memory_embs=self.memory_embs, rels_ids=rels_ids)[0]
 
+        if self.use_oracle_graphs:
+            pdb.set_trace()
+            rel_loss, node_loss = reasoning_path.loss_rels, reasoning_path.loss_nodes
+            if rel_loss is not None:
+                rel_loss = torch.mean(rel_loss)
+                self.log('train_loss_rel', rel_loss.item(), on_step=True, on_epoch=False, prog_bar=True)
+                loss = loss + rel_loss
+            if node_loss is not None:
+                node_loss = torch.mean(node_loss)
+                self.log('train_loss_node', node_loss.item(), on_step=True, on_epoch=False, prog_bar=True)
+                loss = loss + node_loss
 
         self.log('train_loss', loss.item(), on_step=True, on_epoch=False, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        #pdb.set_trace()
-        batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids, _ = self.prepare_data_from_batch(batch)
+        pdb.set_trace()
+        batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids, _ = self.prepare_data_from_batch(batch, True)
         if self.create_embeddings_with_model:
             self.generate_embeddings(graph)
 
@@ -236,7 +303,7 @@ class GNNQA(pl.LightningModule):
 
     def test_step(self, batch, batch_idx):
         #pdb.set_trace()
-        batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids, _ = self.prepare_data_from_batch(batch)
+        batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids, _ = self.prepare_data_from_batch(batch, True)
         if self.create_embeddings_with_model:
             self.generate_embeddings(graph)
 

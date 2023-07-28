@@ -82,6 +82,9 @@ def get_args(default=False):
     argparser.add_argument('--use_support_document', default=False, action='store_true', help='use support document')
     argparser.add_argument('--use_oracle_graphs', default=False, action='store_true', help='use support sentence')
     argparser.add_argument('--create_embeddings_with_model', default=False, action='store_true', help='create embeddings with model')
+    argparser.add_argument('--use_oracle_rel', default=False, action='store_true', help='use oracle rel')
+    argparser.add_argument('--use_oracle_nodes', default=False, action='store_true', help='use oracle nodes')
+    argparser.add_argument('--force_target_path', default=False, action='store_true', help='force target path')
 
     # GNN Args
     argparser.add_argument('--layer_with_gnn', type=int, nargs='+', default=[1, 2], help='Layers with KIL')
@@ -198,18 +201,24 @@ def main(args):
         # Now I extract the main keyword of the answer
         if args.create_oracle_graphs:
             dataset[train_name] = dataset[train_name].map(
-                lambda example: {'answer_keyword': extract_keyword_from_text(example['question'], args)})
+                lambda example: {'answer_keyword': extract_keyword_from_text(
+                    example['answers']['text'] if type(example['answers']['text']) != list
+                    else ' '.join(example['answers']['text']), args)})
 
             dataset[val_name] = dataset[val_name].map(
-                lambda example: {'answer_keyword': extract_keyword_from_text(example['question'], args)})
+                lambda example: {'answer_keyword': extract_keyword_from_text(
+                    example['answers']['text'] if type(example['answers']['text']) != list
+                    else ' '.join(example['answers']['text']), args)})
 
             dataset[test_name] = dataset[test_name].map(
-                lambda example: {'answer_keyword': extract_keyword_from_text(example['question'], args)})
+                lambda example: {'answer_keyword': extract_keyword_from_text(
+                    example['answers']['text'] if type(example['answers']['text']) != list
+                    else ' '.join(example['answers']['text']), args)})
 
             id_to_node = {v: k for k, v in nodes_dict.items()}
             id_to_rel = {v: k for k, v in rels_dict.items()}
             dataset[train_name] = dataset[train_name].map(
-                lambda example: {'oracle_graphs': create_oracle_graph(example, id_to_node, id_to_rel)})
+                lambda example: {'oracle_graphs': create_oracle_graph(example, id_to_node, id_to_rel, args.graph_depth)})
 
 
 
@@ -401,6 +410,16 @@ if __name__ == '__main__':
     if args.sentence_transformer_embedding_size:
         print('--sentence_transformer_embedding_size is deprecated, use --embedding_size instead')
         setattr(args, 'embedding_size', args.sentence_transformer_embedding_size)
+
+    if args.use_oracle_graphs:
+        if not args.use_oracle_rel and not args.use_oracle_nodes and not args.force_target_path:
+            print('[WARNING] with --use_oracle_graphs You have to use at least one of the oracle flags [--use_oracle_rel, --use_oracle_nodes, --force_target_path]')
+            print('Automatically set all the flags to true')
+            setattr(args, 'use_oracle_rel', True)
+            setattr(args, 'use_oracle_nodes', True)
+            setattr(args, 'force_target_path', True)
+    if args.use_oracle_rel or args.use_oracle_nodes or args.force_target_path:
+        setattr(args, 'use_oracle_graphs', True)
     if args.set_anomaly_detection:
         with torch.autograd.set_detect_anomaly(True):
             main(args)

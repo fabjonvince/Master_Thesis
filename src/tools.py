@@ -40,7 +40,31 @@ class SingleReasoningPath:
 class AllReasoningPath:
     def __init__(self):
         self.all_path = dict()
+        self.targets_rel = None
+        self.targets_node = None
+        self.target_path = None
+        self.loss_rels = None
+        self.loss_nodes = None
 
+    def set_targets(self, targets_rel=None, targets_node=None, target_path=None):
+        self.targets_rel = targets_rel
+        self.targets_node = targets_node
+        self.target_path = target_path
+
+    def get_targets(self):
+        return self.targets_rel, self.targets_node, self.target_path
+
+    def add_rel_loss(self, loss):
+        if self.loss_rels is None:
+            self.loss_rels = [loss]
+        else:
+            self.loss_rels.append(loss)
+
+    def add_node_loss(self, loss):
+        if self.loss_nodes is None:
+            self.loss_nodes = [loss]
+        else:
+            self.loss_nodes.append(loss)
     def set_root_nodes(self, root_nodes, topk):
         self.all_path = dict()
         for node in root_nodes:
@@ -285,7 +309,16 @@ def find_kg_pathes(start, end, kg:list, max_distance=3):
             return final_trip
 
 
-def create_oracle_graph(row, ids_to_nodes, ids_to_rels):
+def pad_path_to_max_len(path, max_len):
+    pdb.set_trace()
+    if len(path) < max_len:
+        last_node = path[-1][-1]
+        path = path + [(last_node, 'self', last_node)] * (max_len - len(path))
+    return path
+
+
+def create_oracle_graph(row, ids_to_nodes, ids_to_rels, max_len):
+    pdb.set_trace()
     keysq = row['keywords']
     keysa = row['answer_keyword']
     graph = row['graph']
@@ -299,8 +332,11 @@ def create_oracle_graph(row, ids_to_nodes, ids_to_rels):
     for keyq in keysq:
         kgraphs = list()
         for keya in keysa:
-            kgraph = find_kg_pathes(keyq, keya, kg)
+            kgraph = find_kg_pathes(keyq, keya, kg, max_distance=max_len)
+
             if kgraph is not None:
+                if len(kgraph) < max_len:
+                    pad_path_to_max_len(kgraph, max_len)
                 kgraphs.append(kgraph)
         graphs[keyq] = kgraphs
     return graphs

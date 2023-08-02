@@ -1,10 +1,13 @@
 import pdb
 
 import nltk
+import pickle
 import torch
 from datasets import load_metric
 import torch.nn as nn
 import traceback
+
+import os
 from transformers import BartTokenizer, BartForConditionalGeneration
 from typing import List
 import numpy as np
@@ -84,6 +87,38 @@ class AllReasoningPath:
         return {k: v.get_reasoning_path() for k, v in self.all_path.items()}
 
 
+class OraclePath:
+    def __init__(self, root_node):
+        self.root_node = root_node
+        self.paths = list()
+
+    def add_path(self, path:list):
+        self.paths.append(path)
+
+class OraclePathDict:
+    def __init__(self):
+        self.oracle_path_dict = dict()
+
+    def add_path(self, root_node, path):
+        if root_node not in self.oracle_path_dict:
+            self.oracle_path_dict[root_node] = OraclePath(root_node)
+        self.oracle_path_dict[root_node].add_path(path)
+
+    def to_dict(self):
+        rook_words = self.oracle_path_dict.keys()
+        ret_dict = dict()
+        for root_word in rook_words:
+                ret_dict[root_word] = self.oracle_path_dict[root_word].paths
+        return ret_dict
+
+    def to_tuple(self):
+        rook_words = self.oracle_path_dict.keys()
+        ret_dict = dict()
+        for root_word in rook_words:
+                ret_dict[root_word] = self.oracle_path_dict[root_word].paths
+        return ret_dict.items()
+
+
 # Define a function named find_triplets. It will be used inside the Custom layer
 def find_triplets(list_of_triplets, start=None, rel=None, end=None):
     # Initialize an empty list to store the matching triplets
@@ -98,6 +133,17 @@ def find_triplets(list_of_triplets, start=None, rel=None, end=None):
             result.append(triplet)
     # Return the result list
     return result
+
+def find_triplets_opt(list_of_triplets, start=None, rel=None, end=None):
+    # Use a lambda function to filter the triplets based on the conditions
+    filter_function = lambda t: (start is None or t[0] == start) and (rel is None or t[1] == rel) and (
+                end is None or t[2] == end)
+
+    # Use filter() to get the matching triplets
+    result = list(filter(filter_function, list_of_triplets))
+
+    return result
+
 
 
 def extract_all_relations_for_a_node(node_name, triplets):
@@ -293,11 +339,11 @@ class BARTScorer:
 def find_kg_pathes(start, end, kg:list, max_distance=3):
     if max_distance == 0:
         return None
-    triplets = find_triplets(kg, end=end)
+    triplets = find_triplets_opt(kg, end=end)
     if len(triplets) == 0:
         return None
 
-    final_trip = find_triplets(triplets, start=start)
+    final_trip = find_triplets_opt(triplets, start=start)
     if len(final_trip) != 0:
         return [final_trip[0]]
 
@@ -310,15 +356,14 @@ def find_kg_pathes(start, end, kg:list, max_distance=3):
 
 
 def pad_path_to_max_len(path, max_len):
-    pdb.set_trace()
     if len(path) < max_len:
         last_node = path[-1][-1]
         path = path + [(last_node, 'self', last_node)] * (max_len - len(path))
     return path
 
 
-def create_oracle_graph(row, ids_to_nodes, ids_to_rels, max_len):
-    pdb.set_trace()
+def create_oracle_graph(row, ids_to_nodes, ids_to_rels, max_len, save_dir):
+    oraclepaths = OraclePathDict()
     keysq = row['keywords']
     keysa = row['answer_keyword']
     graph = row['graph']
@@ -330,15 +375,17 @@ def create_oracle_graph(row, ids_to_nodes, ids_to_rels, max_len):
 
     graphs = dict()
     for keyq in keysq:
-        kgraphs = list()
         for keya in keysa:
+            print(keyq, keya)
             kgraph = find_kg_pathes(keyq, keya, kg, max_distance=max_len)
 
             if kgraph is not None:
                 if len(kgraph) < max_len:
-                    pad_path_to_max_len(kgraph, max_len)
-                kgraphs.append(kgraph)
-        graphs[keyq] = kgraphs
-    return graphs
+                    kgraph = pad_path_to_max_len(kgraph, max_len)
+                oraclepaths.add_path(keyq, kgraph)
+
+    with open(os.path.join(save_dir, row['row_id'] + '.pkl'), 'wb') as f:
+        pickle.dump(oraclepaths, f)
+    return
 
 

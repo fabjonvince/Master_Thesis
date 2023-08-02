@@ -218,7 +218,8 @@ def main(args):
             id_to_node = {v: k for k, v in nodes_dict.items()}
             id_to_rel = {v: k for k, v in rels_dict.items()}
             dataset[train_name] = dataset[train_name].map(
-                lambda example: {'oracle_graphs': create_oracle_graph(example, id_to_node, id_to_rel, args.graph_depth)})
+                lambda example: create_oracle_graph(example, id_to_node, id_to_rel, args.graph_depth, save_dir + '/oracle_graphs/'))
+            pdb.set_trace()
 
 
 

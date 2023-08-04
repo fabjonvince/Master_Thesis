@@ -248,7 +248,7 @@ def create_embeddings_with_model(model, nodes, tokenizer, batch_size, dir, devic
                          return_tensors='pt')['input_ids'].to('cpu')
 
     # create batch of the nodes, embed them, compute mean and save them
-    for i in range(0, 800, batch_size):
+    for i in range(0, len(nodes), batch_size):
         selected_nodes = node_tok[i: i + batch_size]
         embedded = model.shared(selected_nodes)
         for j, node in enumerate(nodes[i: i + batch_size]):

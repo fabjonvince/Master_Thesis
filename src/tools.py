@@ -1,4 +1,5 @@
 import pdb
+from pathlib import Path
 
 import nltk
 import pickle
@@ -383,9 +384,12 @@ def create_oracle_graph(row, ids_to_nodes, ids_to_rels, max_len, save_dir):
                 if len(kgraph) < max_len:
                     kgraph = pad_path_to_max_len(kgraph, max_len)
                 oraclepaths.add_path(keyq, kgraph)
-
-    with open(os.path.join(save_dir, row['row_id'] + '.pkl'), 'wb') as f:
+    save_file = Path(save_dir).joinpath(str(row['row_id']) + '.pkl')
+    if not save_file.exists():
+        save_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(save_file, 'wb') as f:
         pickle.dump(oraclepaths, f)
-    return
+    row['oracle_graphs'] = str(save_file)
+    return row
 
 

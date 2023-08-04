@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytorch_lightning as pl
 import torch
-
+import pickle
 from preprocess import from_triplets_of_ids_to_triplets_of_string
 from tools import AllReasoningPath, get_rouge_scores, get_bert_scores, get_bartscore, find_kg_pathes
 import nltk
@@ -52,7 +52,9 @@ class GNNQA(pl.LightningModule):
 
         # dictionary containing k:v where k is the node/rel id and v is the node/rel value
         self.ids_to_rels = ids_to_rels
+        self.rels_to_ids = {v: k for k, v in ids_to_rels.items()}
         self.ids_to_nodes = ids_to_nodes
+        self.nodes_to_ids = {v: k for k, v in ids_to_nodes.items()}
         # dictionary containing node embeddings
         self.memory_embs = memory_embs
 
@@ -153,7 +155,9 @@ class GNNQA(pl.LightningModule):
         if not skip_oracle_graph_creation:
             if self.use_oracle_graphs:
                 if 'oracle_graphs' in batch:
-                    all_pathes = batch['oracle_graphs']
+                    path = batch['oracle_graphs']
+                    with open(path, 'rb') as f:
+                        all_pathes = pickle.load(f).to_dict()
                 else:
                     #pdb.set_trace()
                     if type(answer) == list:
@@ -162,19 +166,29 @@ class GNNQA(pl.LightningModule):
 
         return batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids, all_pathes
 
-    def prepare_for_oracle_graph_training(self, all_pathes):
-        if all_pathes is not None:
-            raise NotImplementedError('Oracle graphs not implemented yet')
+    def prepare_for_oracle_graph_training(self, all_paths, topk=2):
+        """
+        This function turn all paths into a dictionary where K are the root_words and the value are the probability distributions for each step.
+        Two dictionry one for relations and one for nodes
+        Args:
+            all_pathes:
+
+        Returns:
+
+        """
+        if all_paths is None:
+            raise Exception('all_pathes is None')
         else:
             rel_target_dict = {}
             node_target_dict = {}
-            for k, paths in all_pathes.items():
+            for k, paths in all_paths.items():
                 rel_targets = []
                 node_targets = []
+                paths = paths[:topk] # I select the topK path
                 for i in range(len(paths[0])):
                     rs = [path[i][1] for path in paths]
                     rids = [self.rels_to_ids[r] for r in rs]
-                    len_r = len(self.rels_to_ids)
+                    len_r = len(self.ids_to_rels)
                     rel_target = torch.zeros(len_r, dtype=self.dtype)
                     value = 1 / len(rids)
                     for rid in rids:
@@ -185,21 +199,36 @@ class GNNQA(pl.LightningModule):
                     # now the last nodes
                     ns = [path[i][2] for path in paths]
                     nids = [self.nodes_to_ids[n] for n in ns]
-                    len_n = len(self.nodes_to_ids)
-                    node_target = torch.zeros(len_n)
-                    value = 1 / len(nids)
-                    for nid in nids:
-                        node_target[nid] = node_target[nid] + value
-                    node_target = node_target.to(self.device)
+                    node_target = [(r,k,v) for k,r,v in zip(ns, rs, nids)]
+                    # len_n = len(self.nodes_to_ids)
+                    # node_target = torch.zeros(len_n)
+                    # value = 1 / len(nids)
+                    # for nid in nids:
+                    #     node_target[nid] = node_target[nid] + value
+                    # node_target = node_target.to(self.device)
                     node_targets.append(node_target)
                 rel_target_dict[k] = rel_targets
                 node_target_dict[k] = node_targets
             return rel_target_dict, node_target_dict
 
     def prepare_target_graphs(self, all_paths, k):
+        """
+        This function generates from the oracle paths the path to force into the model during train.
+        The K indicates the topK path that model generates from each root_word. Can happen that the number of path is less than K,
+        in this case I repeat the path until I have K paths
+        Args:
+            all_paths:
+            k:
+
+        Returns:
+
+        """
         target_paths = {}
-        for key, paths in all_paths.item():
+        for key, paths in all_paths.items():
             if len(paths) > k:
+                """
+                This should be useless because I already select the topK paths
+                """
                 # I select k path at random
                 paths = random.sample(paths, k)
             else:
@@ -209,12 +238,11 @@ class GNNQA(pl.LightningModule):
         return target_paths
 
     def training_step(self, batch, batch_idx):
-        pdb.set_trace()
         batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids, all_pathes = self.prepare_data_from_batch(batch)
         if self.create_embeddings_with_model:
             self.generate_embeddings(graph)
-        pdb.set_trace()
         if self.use_oracle_graphs:
+            all_pathes = {k: v[:self.model.args.gnn_topk] for k, v in all_pathes.items()}
             # target is a dictionary where k are keywords and v are probability distribution, one for each triplet in the all_paths.
             targets_rel, targets_node = self.prepare_for_oracle_graph_training(all_pathes)
             targets = self.prepare_target_graphs(all_pathes, self.model.args.gnn_topk)
@@ -229,13 +257,17 @@ class GNNQA(pl.LightningModule):
                     memory_embs=self.memory_embs, rels_ids=rels_ids)[0]
 
         if self.use_oracle_graphs:
-            pdb.set_trace()
             rel_loss, node_loss = reasoning_path.loss_rels, reasoning_path.loss_nodes
             if rel_loss is not None:
+                # rel_loss is a list of scalar tensor and I want to convert it into a tensor
+                rel_loss = [r for r in rel_loss if r is not None]
+                rel_loss = torch.stack(rel_loss)
                 rel_loss = torch.mean(rel_loss)
                 self.log('train_loss_rel', rel_loss.item(), on_step=True, on_epoch=False, prog_bar=True)
                 loss = loss + rel_loss
             if node_loss is not None:
+                node_loss = [n for n in node_loss if n is not None]
+                node_loss = torch.stack(node_loss)
                 node_loss = torch.mean(node_loss)
                 self.log('train_loss_node', node_loss.item(), on_step=True, on_epoch=False, prog_bar=True)
                 loss = loss + node_loss
@@ -244,7 +276,7 @@ class GNNQA(pl.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        pdb.set_trace()
+        #pdb.set_trace()
         batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids, _ = self.prepare_data_from_batch(batch, True)
         if self.create_embeddings_with_model:
             self.generate_embeddings(graph)
@@ -427,7 +459,6 @@ class GNNQA(pl.LightningModule):
                 embedded = self.model.shared(selected_nodes_tokens)
                 for j, node in enumerate(nodes[i: i + batch_size]):
                     self.memory_embs[node] = torch.mean(embedded[j], dim=0).detach().cpu()
-
         return
 
 

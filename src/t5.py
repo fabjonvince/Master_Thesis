@@ -171,10 +171,13 @@ class CustomGNNLayer(torch.nn.Module):
         rel_prob = self.classification_head(hidden_states[rel_mask.bool()])
         # rel_prob shape (batch_size=1, num_rels)
         if self.use_oracle_rel and current_reasoning_path.targets_rel is not None:
-            pdb.set_trace()
-            oracle_rel = current_reasoning_path.targets_rel
+            # Ok, I have target rels and I want to use them
+            # I extract the target rels that are a list of list of prob distribution
+            # Shape: KXLXR where K is the number of root_nodes, L is the number of layers with gnn, R is the number of relations
+            oracle_rel = current_reasoning_path.targets_rel.values()
             targets = []
-            for i, rel, target in enumerate(zip(rel_prob, oracle_rel)):
+            for i, (rel, target) in enumerate(zip(rel_prob, oracle_rel)):
+                # for each root_node I select the predicted prob rel and the target one corresponding to the layer
                 current_target = target[self.layer_position]
                 criterion = torch.nn.CrossEntropyLoss()
                 loss = criterion(rel, current_target)
@@ -220,7 +223,7 @@ class CustomGNNLayer(torch.nn.Module):
             for (k, rels), probs, ids in zip(rels_of_last_nodes, rels_of_last_nodes_prob, rels_of_last_nodes_ids):
                 # groups_nodes contains a list for each pair (last_node, rel) containing all the end nodes of the pair.
                 groups_nodes.append([[n for _, _, n in find_triplets(gnn_triplets, start=k, rel=rel)] for rel in rels])
-
+            predicted_scores = list()
             # now it computes the weighted contribution of all the ends nodes.
             # They are weighted by the relation weights and the score computed with an attention mechanism
             # Like before all the vaiable have the first size equal to the number of last nodes (topk) so we iterate for each last_word.
@@ -241,6 +244,30 @@ class CustomGNNLayer(torch.nn.Module):
                 # embs is a padded tensor of shape [n_groups, n_end_nodes, emb_dim]
                 scores, embs = self.calculate_scores(query.view(1, -1), k_nodes=node_embs,
                                                      probabilities=probs.view(1, -1))
+
+                if self.use_oracle_nodes:
+                    pdb.set_trace()
+                    targets_nodes = current_reasoning_path.targets_node[root_word][self.layer_position]
+                    tres = [r for r,_,_ in targets_nodes]
+                    target = torch.zeros_like(scores, requires_grad=False, device=scores.device)
+                    for i in range(len(rels)):
+                        if rels[i] in tres:
+                            # I get the index of the rel in tres
+                            idx = tres.index(rels[i])
+                            # I get the target node
+                            tnode = tres[idx][1]
+                            tnodeid = tres[idx][2]
+                            nidx = end_nods[i].index(tnode)
+                            target[i, nidx] = 1
+                    target = torch.nn.Softmax(dim=1)(target)
+                    criterion = torch.nn.CrossEntropyLoss()
+                    nodeloss = criterion(scores, target)
+                    current_reasoning_path.add_node_loss(nodeloss)
+
+
+
+
+
 
                 # now I have to weight the embeddings with the scores
                 # first I have to reshape the scores and the embsp
@@ -449,10 +476,12 @@ class T5GNNStack(T5PreTrainedModel):
         #    [T5Block(config, has_relative_attention_bias=bool(i == 0)) for i in range(config.num_layers)]
         #)
         layers = list()
+        layer_pos = 0
         for i in range(config.num_layers):
             if i in config.layer_with_gnn:
                 print('Altering layer {} with GNN'.format(i))
-                layers.append(T5GNNBlock(config, has_relative_attention_bias=bool(i == 0), layer_position=i))
+                layers.append(T5GNNBlock(config, has_relative_attention_bias=bool(i == 0), layer_position=layer_pos))
+                layer_pos += 1
             else:
                 layers.append(T5Block(config, has_relative_attention_bias=bool(i == 0)))
         self.block = nn.ModuleList(layers)

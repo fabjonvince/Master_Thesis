@@ -13,7 +13,7 @@ from datasets import load_from_disk, Dataset
 from transformers import T5Tokenizer
 import wandb
 from preprocess import text_to_graph_concept, add_special_tokens, create_memory, \
-    get_node_and_rel_dict, extract_support_from_links
+    get_node_and_rel_dict, extract_support_from_links, create_embeddings_with_model
 from data import get_dataset, name_mapping
 from model import GNNQA
 from bart import BartGNNForConditionalGeneration
@@ -58,6 +58,7 @@ def get_args(default=False):
     argparser.add_argument('--keyword_extraction_method', type=str, default='bert', help='kw extraction method')
     argparser.add_argument('--create_support_from_links', default=False, action='store_true', help='create support from links')
     argparser.add_argument('--dont_use_sentence_transformers', default=False, action='store_true', help='use sentence transformers')
+    argparser.add_argument('--all_keywords', default=False, action='store_true', help='use all keywords')
 
 
     # Training args
@@ -77,6 +78,7 @@ def get_args(default=False):
     argparser.add_argument('--use_profiler', default=False, action='store_true', help='use profiler')
     argparser.add_argument('--use_support_document', default=False, action='store_true', help='use support document')
     argparser.add_argument('--create_embeddings_with_model', default=False, action='store_true', help='create embeddings with model')
+    argparser.add_argument('--batch_size_embedding', default=256, type=int, help='batch size for embeddings creation')
 
     # GNN Args
     argparser.add_argument('--layer_with_gnn', type=int, nargs='+', default=[1, 2], help='Layers with KIL')
@@ -85,6 +87,8 @@ def get_args(default=False):
                            help='Load sentence transformer checkpoint')
     argparser.add_argument('--embedding_size', type=int, default=384,
                            help='Sentence transformer embedding size')
+    argparser.add_argument('--embedding_size_model', type=int, default=768,
+                           help='embedding size of given model')
     argparser.add_argument('--no_gnn', default=False, action='store_true', help='do not use gnn. To lunch baselines')
     argparser.add_argument('--gnn_lr', default=None, type=float, help='gnn learning rate')
     argparser.add_argument('--reprojection_activation', default='tanh', type=str,
@@ -125,6 +129,8 @@ def main(args):
 
         if args.keyword_extraction_method != 'yake' and args.keyword_extraction_method != 'rake':
             args.keyword_extraction_method = 'bert'
+        if args.all_keywords:
+            args.keyword_extraction_method = 'all'
         # directory where to save the dataset
         save_dir = f'dataset/{args.dataset}_{args.train_samples}_{args.val_samples}_{args.test_samples}_conceptnet_{args.keyword_extraction_method}'
         if args.create_support_from_links:
@@ -295,11 +301,19 @@ def main(args):
             dataset[test_name] = dataset[test_name].select(range(args.test_samples))
 
 
+
         # set total number of rel, nodes and gnn embs size
         setattr(args, 'n_rel', len(dataset['memory_rels'].features))
         setattr(args, 'n_nodes', len(dataset['memory_nodes'].features))
         if args.create_embeddings_with_model:
-            args.embedding_size = 768
+            args.embedding_size = args.embedding_size_model
+            if args.load_dataset_from is not None:
+                emb_dir = args.load_dataset_from + '/embeddings/'
+            else:
+                emb_dir = save_dir + '/embeddings/'
+        else:
+            emb_dir = None
+
         setattr(args, 'gnn_embs_size', args.embedding_size)
 
 
@@ -347,6 +361,9 @@ def main(args):
         else:
             save_dir = None
 
+        nodes = {i: word for i, word in enumerate(dataset['memory_nodes'].features)}
+        rels = {i: word for i, word in enumerate(dataset['memory_rels'].features)}
+
         if args.no_gnn:
             layer_with_gnn = []
             setattr(args, 'layer_with_gnn', layer_with_gnn)
@@ -358,20 +375,27 @@ def main(args):
                 model = T5GNNForConditionalGeneration.from_pretrained(args.checkpoint_summarizer, args=args)
             if args.checkpoint_summarizer in ['t5-3b', 't5-11b']:
                 model = T5GNNForConditionalGeneration.from_pretrained(args.checkpoint_summarizer,
-                                                                load_in_8bit=True, device_map='auto',
-                                                                  args=args)
+                                                                      load_in_8bit=True, device_map='auto',
+                                                                      args=args)
         else:
             print(f'The model {args.model_method} is not supported')
 
-        nodes = {i: word for i, word in enumerate(dataset['memory_nodes'].features)}
-        rels = {i: word for i, word in enumerate(dataset['memory_rels'].features)}
+        if args.create_embeddings_with_model:
+
+            nodes_arr = list(nodes.values())
+
+            if not os.path.exists(emb_dir):
+                os.makedirs(emb_dir)
+                print('creating embeddings with model')
+                create_embeddings_with_model(model, nodes_arr, tokenizer, args.batch_size_embedding, emb_dir, device)
 
 
         gnnqa = GNNQA(model=model, ids_to_rels=rels, ids_to_nodes=nodes, memory_embs=dataset['memory_nodes'].to_dict(),
                       tokenizer=tokenizer, save_dir=save_dir,
                       model_lr=args.model_lr, gnn_lr=args.gnn_lr, gnn_layers=args.layer_with_gnn, labels=answers_name,
                       use_support_document=args.use_support_document,
-                      create_embeddings_with_model=args.create_embeddings_with_model)
+                      create_embeddings_with_model=args.create_embeddings_with_model, emb_dir=emb_dir,
+                      batch_size_embedding=args.batch_size_embedding)
 
         # create T5 question for each example
         dataset[train_name] = dataset[train_name].map(

@@ -5,9 +5,12 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 import requests
+import torch
 import yake
 import nltk
 from bs4 import BeautifulSoup
+from nltk import word_tokenize
+from nltk.corpus import stopwords
 from rake_nltk import Rake
 nltk.download('stopwords')
 nltk.download('punkt')
@@ -104,7 +107,13 @@ def text_to_graph_concept(
         args,
 ):
 
-    if args.keyword_extraction_method == 'rake':
+    # here we take all the words as keywords except the stopwords
+    if args.keyword_extraction_method == 'all':
+        stop_words = set(stopwords.words('english'))
+        word_tok = word_tokenize(text)
+        kw = [w.lower() for w in word_tok if w.lower() not in stop_words]
+    # look which keywords extraction method to use and apply it
+    elif args.keyword_extraction_method == 'rake':
         kw_model = Rake()
         kw_model.extract_keywords_from_text(text)
         kw = kw_model.get_ranked_phrases()
@@ -132,10 +141,8 @@ def text_to_graph_concept(
         kw = [k for k in (set(kw) & set(graph.index))]
         if i == 0:
             txt = kw
-        # filtered = graph.loc[kw, [subj, rel, obj]] #
+
         filtered = graph.loc[kw]
-        # triplets = filtered.to_numpy()
-        # triplets = [(item[0], item[1], item[2]) for item in triplets] #
         triplets = [(nodes_dict[row.Index], rels_dict[row.rel], nodes_dict[row.arg2]) for row in filtered.itertuples(index=True)]
         triplets = np.unique(triplets, axis=0)
         triplets_list.extend([triplet for triplet in triplets])
@@ -212,3 +219,21 @@ def create_memory(model, sentences, args):
     embs = model.encode(sentences['custom_value'], **args).to('cpu')
     embs = {s:e for s,e in zip(sentences['custom_value'], embs)}
     return embs
+
+
+def create_embeddings_with_model(model, nodes, tokenizer, batch_size, dir, device):
+
+    memory_embs = {}
+    # tokenize all the nodes
+    node_tok = tokenizer(nodes, padding='max_length', truncation=True, max_length=32,
+                         return_tensors='pt')['input_ids'].to('cpu')
+
+    # create batch of the nodes, embed them, compute mean and save them
+    for i in range(0, 800, batch_size):
+        selected_nodes = node_tok[i: i + batch_size]
+        embedded = model.shared(selected_nodes)
+        for j, node in enumerate(nodes[i: i + batch_size]):
+            memory_embs[node] = torch.mean(embedded[j], dim=0).detach().cpu()
+        np.save(f'{dir}/embed_{i}_{i + batch_size}.npy', memory_embs)
+
+

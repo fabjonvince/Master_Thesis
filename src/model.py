@@ -42,6 +42,8 @@ class GNNQA(pl.LightningModule):
                  labels=None,
                  use_support_document=False,
                  create_embeddings_with_model=False,
+                 emb_dir=None,
+                 batch_size_embedding=None,
                  ):
         super().__init__()
         if gnn_layers is None:
@@ -67,6 +69,8 @@ class GNNQA(pl.LightningModule):
             self.tokenizer.add_special_tokens(
                 {"additional_special_tokens": tokenizer.additional_special_tokens + ["<SUPP_DOC_TOK>"]})
         self.create_embeddings_with_model = create_embeddings_with_model
+        self.emb_dir= emb_dir
+        self.batch_size_embedding = batch_size_embedding
 
     def forward(self,
                 input_ids,
@@ -80,13 +84,18 @@ class GNNQA(pl.LightningModule):
                 rels_ids=None,
                 model_lr=None,
                 gnn_lr=None,
+                create_embeddings_with_model=False,
+                emb_dir=None,
+                batch_size_embedding=None,
                 ):
 
         #print('Forward step')
         #with torch.autograd.set_detect_anomaly(True):
         output = self.model(input_ids=input_ids, attention_mask=attention_mask, labels=labels, gnn_triplets=gnn_triplets,
                             gnn_mask=gnn_mask, rel_mask=rel_mask, current_reasoning_path=current_reasoning_path,
-                            memory_embs=memory_embs, rels_ids=rels_ids)
+                            memory_embs=memory_embs, rels_ids=rels_ids,
+                            create_embeddings_with_model=create_embeddings_with_model, emb_dir=emb_dir,
+                            batch_size_embedding=batch_size_embedding)
 
         return output.loss, output.logits
 
@@ -138,12 +147,14 @@ class GNNQA(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         #pdb.set_trace()
         batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids = self.prepare_data_from_batch(batch)
-        if self.create_embeddings_with_model:
-            self.generate_embeddings(graph)
+        #if self.create_embeddings_with_model:
+            #self.generate_embeddings(graph)
 
         loss = self(input_ids=input_ids, attention_mask=attention_mask, labels=labels, gnn_triplets=graph,
                     gnn_mask=batch['gnn_mask'], rel_mask=batch['rel_mask'], current_reasoning_path=reasoning_path,
-                    memory_embs=self.memory_embs, rels_ids=rels_ids)[0]
+                    memory_embs=self.memory_embs, rels_ids=rels_ids,
+                    create_embeddings_with_model=self.create_embeddings_with_model, emb_dir=self.emb_dir,
+                    batch_size_embedding=self.batch_size_embedding)[0]
 
 
         self.log('train_loss', loss.item(), on_step=True, on_epoch=False, prog_bar=True)
@@ -152,15 +163,18 @@ class GNNQA(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         #pdb.set_trace()
         batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids = self.prepare_data_from_batch(batch)
-        if self.create_embeddings_with_model:
-            self.generate_embeddings(graph)
+        #if self.create_embeddings_with_model:
+            #self.generate_embeddings(graph)
 
         with torch.no_grad():
             predictions = self.model.generate(input_ids=input_ids, gnn_triplets=graph,
                                        gnn_mask=batch['gnn_mask'], rel_mask=batch['rel_mask'],
                                        current_reasoning_path=reasoning_path,
                                        memory_embs=self.memory_embs,
-                                       rels_ids=rels_ids, **gen_val_params)
+                                       rels_ids=rels_ids, **gen_val_params,
+                                       create_embeddings_with_model=self.create_embeddings_with_model,
+                                       emb_dir=self.emb_dir,
+                                       batch_size_embedding=self.batch_size_embedding)
         predictions = [self.tokenizer.decode(predictions[0], skip_special_tokens=True)]
 
         if len(self.labels.split(',')) > 1:
@@ -210,15 +224,19 @@ class GNNQA(pl.LightningModule):
     def test_step(self, batch, batch_idx):
         #pdb.set_trace()
         batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids = self.prepare_data_from_batch(batch)
-        if self.create_embeddings_with_model:
-            self.generate_embeddings(graph)
+        #if self.create_embeddings_with_model:
+            #self.generate_embeddings(graph)
 
         with torch.no_grad():
             predictions = self.model.generate(input_ids=input_ids, gnn_triplets=graph,
                                               gnn_mask=batch['gnn_mask'], rel_mask=batch['rel_mask'],
                                               current_reasoning_path=reasoning_path,
                                               memory_embs=self.memory_embs,
-                                              rels_ids=rels_ids, **gen_test_params)
+                                              rels_ids=rels_ids,
+                                              create_embeddings_with_model=self.create_embeddings_with_model,
+                                              emb_dir=self.emb_dir,
+                                              batch_size_embedding=self.batch_size_embedding,
+                                              **gen_test_params)
         predictions = [self.tokenizer.decode(predictions[0], skip_special_tokens=True)]
         if len(self.labels.split(',')) > 1:
             targets = batch[self.labels.split(',')[0]][self.labels.split(',')[1]]

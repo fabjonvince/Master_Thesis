@@ -95,6 +95,9 @@ class BartGNNForConditionalGeneration(BartPretrainedModel):
         memory_embs=None,  # embeddings of the nodes in the memory
         current_reasoning_path: AllReasoningPath = None,
         rels_ids=None,  # ids of the relations in the memory,
+        create_embeddings_with_model=False,
+        emb_dir=None,
+        batch_size_embedding=None,
     ) -> Union[Tuple, Seq2SeqLMOutput]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
@@ -134,6 +137,9 @@ class BartGNNForConditionalGeneration(BartPretrainedModel):
             memory_embs=memory_embs,  # embeddings of the nodes in the memory
             current_reasoning_path=current_reasoning_path,
             rels_ids=rels_ids,  # ids of the relations in the memory
+            create_embeddings_with_model=create_embeddings_with_model,
+            emb_dir=emb_dir,
+            batch_size_embedding=batch_size_embedding,
         )
 
         lm_logits = self.lm_head(outputs[0])
@@ -272,6 +278,9 @@ class BartGNNModel(BartPretrainedModel):
         memory_embs=None,  # embeddings of the nodes in the memory
         current_reasoning_path: AllReasoningPath = None,
         rels_ids=None,  # ids of the relations in the memory
+        create_embeddings_with_model=False,
+        emb_dir=None,
+        batch_size_embedding=None,
     ) -> Union[Tuple, Seq2SeqModelOutput]:
         # different to other models, Bart automatically creates decoder_input_ids from
         # input_ids if no decoder_input_ids are provided
@@ -309,6 +318,9 @@ class BartGNNModel(BartPretrainedModel):
                 memory_embs=memory_embs,  # embeddings of the nodes in the memory
                 current_reasoning_path=current_reasoning_path,  # current reasoning path
                 rels_ids=rels_ids,  # ids of the relations in the memory
+                create_embeddings_with_model=create_embeddings_with_model,
+                emb_dir=emb_dir,
+                batch_size_embedding=batch_size_embedding,
             )
         # If the user passed a tuple for encoder_outputs, we wrap it in a BaseModelOutput when return_dict=True
         elif return_dict and not isinstance(encoder_outputs, BaseModelOutput):
@@ -420,6 +432,9 @@ class BartGNNEncoder(BartPretrainedModel):
         memory_embs=None,  # embeddings of the nodes in the memory
         current_reasoning_path: AllReasoningPath = None,
         rels_ids=None,  # ids of the relations in the memory
+        create_embeddings_with_model=False,
+        emb_dir=None,
+        batch_size_embedding=None,
     ) -> Union[Tuple, BaseModelOutput]:
         r"""
         Args:
@@ -529,6 +544,9 @@ class BartGNNEncoder(BartPretrainedModel):
                             memory_embs=memory_embs,  # embeddings of the nodes in the memory
                             current_reasoning_path=current_reasoning_path,  # current reasoning path
                             rels_ids=rels_ids,  # ids of the relations in the memory
+                            create_embeddings_with_model=create_embeddings_with_model,
+                            emb_dir=emb_dir,
+                            batch_size_embedding=batch_size_embedding,
                         )
 
                 else:
@@ -544,6 +562,9 @@ class BartGNNEncoder(BartPretrainedModel):
                             memory_embs=memory_embs,  # embeddings of the nodes in the memory
                             current_reasoning_path=current_reasoning_path,  # current reasoning path
                             rels_ids=rels_ids,  # ids of the relations in the memory
+                            create_embeddings_with_model=create_embeddings_with_model,
+                            emb_dir=emb_dir,
+                            batch_size_embedding=batch_size_embedding,
                         )
                     else:
                         layer_outputs = encoder_layer(
@@ -609,6 +630,9 @@ class BartGNNEncoderLayer(nn.Module):
         memory_embs=None,  # embeddings of the nodes in the memory
         current_reasoning_path: AllReasoningPath = None,
         rels_ids=None,  # ids of the relations in the memory
+        create_embeddings_with_model=False,
+        emb_dir=None,
+        batch_size_embedding=None,
     ) -> Tuple[torch.FloatTensor, Optional[torch.FloatTensor]]:
         """
         Args:
@@ -655,6 +679,9 @@ class BartGNNEncoderLayer(nn.Module):
             memory_embs,  # embeddings of the nodes in the memory
             current_reasoning_path,
             rels_ids,  # ids of the relations in the memory
+            create_embeddings_with_model,
+            emb_dir,
+            batch_size_embedding,
             )
 
 

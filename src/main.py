@@ -13,10 +13,11 @@ from datasets import load_from_disk, Dataset
 from transformers import T5Tokenizer
 import wandb
 from preprocess import text_to_graph_concept, add_special_tokens, create_memory, \
-    get_node_and_rel_dict, extract_support_from_links, create_embeddings_with_model
+    get_node_and_rel_dict, extract_support_from_links, create_embeddings_with_model, extract_keyword_from_text
 from data import get_dataset, name_mapping
 from model import GNNQA
 from bart import BartGNNForConditionalGeneration
+from tools import create_oracle_graph
 from t5 import T5GNNForConditionalGeneration, available_reporjection_activations
 from pytorch_lightning import Trainer
 from sentence_transformers import SentenceTransformer
@@ -38,6 +39,8 @@ def get_args(default=False):
     # RUN Args
     argparser.add_argument('--run_info', type=str, default=None, help='Run info that will be added to run name')
     argparser.add_argument('--project', type=str, default='gnnqa_default_project', help='wandb project name')
+    argparser.add_argument('--wandb_project', type=str, default=None, help='[DEPRECATED] wandb project name')
+
     argparser.add_argument('--debug', action='store_true', help='Debug mode')
     argparser.add_argument('--dont_save', default=False, action='store_true', help='do not save the model')
     argparser.add_argument('--skip_test', default=False, action='store_true', help='skip test')
@@ -55,10 +58,11 @@ def get_args(default=False):
     argparser.add_argument('--val_samples', type=int, default=None, help='Number of validation samples')
     argparser.add_argument('--test_samples', type=int, default=None, help='Number of test samples')
     argparser.add_argument('--graph_depth', type=int, default=3, help='Graph depth')
-    argparser.add_argument('--keyword_extraction_method', type=str, default='bert', help='kw extraction method')
+    argparser.add_argument('--keyword_extraction_method', type=str, default='rake', help='kw extraction method')
     argparser.add_argument('--create_support_from_links', default=False, action='store_true', help='create support from links')
     argparser.add_argument('--dont_use_sentence_transformers', default=False, action='store_true', help='use sentence transformers')
     argparser.add_argument('--all_keywords', default=False, action='store_true', help='use all keywords')
+    argparser.add_argument('--create_oracle_graphs', default=False, action='store_true', help='create oracle')
 
 
     # Training args
@@ -77,6 +81,7 @@ def get_args(default=False):
     argparser.add_argument('--model_lr', default=0.000001, type=float, help='model learning rate')
     argparser.add_argument('--use_profiler', default=False, action='store_true', help='use profiler')
     argparser.add_argument('--use_support_document', default=False, action='store_true', help='use support document')
+    argparser.add_argument('--use_oracle_graphs', default=False, action='store_true', help='use support sentence')
     argparser.add_argument('--create_embeddings_with_model', default=False, action='store_true', help='create embeddings with model')
     argparser.add_argument('--batch_size_embedding', default=256, type=int, help='batch size for embeddings creation')
 
@@ -85,6 +90,8 @@ def get_args(default=False):
     argparser.add_argument('--gnn_topk', type=int, default=2, help='Number of topk nodes to consider for each root node')
     argparser.add_argument('--checkpoint_sentence_transformer', type=str, default='all-MiniLM-L12-v2',
                            help='Load sentence transformer checkpoint')
+    argparser.add_argument('--sentence_transformer_embedding_size', type=int, default=None,
+                           help='[DEPRECATED use embedding_size] Sentence transformer embedding size')
     argparser.add_argument('--embedding_size', type=int, default=384,
                            help='Sentence transformer embedding size')
     argparser.add_argument('--embedding_size_model', type=int, default=768,
@@ -166,8 +173,6 @@ def main(args):
         print("Adding row_id done")
 
         # Now add the rows: keywords, question, graph
-        #dataset[train_name] = dataset[train_name].map(
-            #lambda example: {'keywords': text_to_keywords(example[question_name])})
 
         dataset[train_name] = dataset[train_name].map(
             lambda example: text_to_graph_concept(args.graph_depth, example[question_name], save_dir + '/graphs/',
@@ -177,19 +182,6 @@ def main(args):
         dataset[train_name] = dataset[train_name].map(
             lambda example: {'question': add_special_tokens(example[question_name], example['keywords'])})
 
-        # dataset[train_name] = dataset[train_name].map(
-        # lambda example: tokenizer(example['question'], padding='max_length', truncation=True, max_length=args.max_length, return_tensors='pt'))
-
-        # dataset[train_name] = dataset[train_name].map(
-        # lambda example: {'answer_tok': tokenizer(example[answers_name]['text'], padding='max_length', truncation=True, max_length=512, return_tensors='pt')})
-
-
-
-        # dataset[train_name] = dataset[train_name].map(
-        #    lambda example: graph_to_nodes_and_rel(example['graph']))
-
-        #dataset[val_name] = dataset[val_name].map(
-            #lambda example: {'keywords': text_to_keywords(example[question_name])})
 
         dataset[val_name] = dataset[val_name].map(
             lambda example:text_to_graph_concept(args.graph_depth, example[question_name], save_dir + '/graphs/',
@@ -199,19 +191,6 @@ def main(args):
         dataset[val_name] = dataset[val_name].map(
             lambda example: {'question': add_special_tokens(example[question_name], example['keywords'])})
 
-        # dataset[val_name] = dataset[val_name].map(
-        # lambda example: tokenizer(example['question'], padding='max_length', truncation=True, max_length=args.max_length, return_tensors='pt'))
-
-        # dataset[val_name] = dataset[val_name].map(
-        # lambda example: {'answer_tok': tokenizer(example[answers_name]['text'], padding='max_length', truncation=True, max_length=512, return_tensors='pt')})
-
-
-
-        # dataset[val_name] = dataset[val_name].map(
-        #    lambda example: graph_to_nodes_and_rel(example['graph']))
-
-        #dataset[test_name] = dataset[test_name].map(
-            #lambda example: {'keywords': text_to_keywords(example[question_name])})
 
         dataset[test_name] = dataset[test_name].map(
             lambda example: text_to_graph_concept(args.graph_depth, example[question_name], save_dir + '/graphs/',
@@ -222,17 +201,24 @@ def main(args):
             lambda example: {'question': add_special_tokens(example[question_name], example['keywords'])})
 
 
+        # Now I extract the main keyword of the answer
+        if args.create_oracle_graphs:
+            dataset[train_name] = dataset[train_name].map(
+                lambda example: {'answer_keyword': extract_keyword_from_text(example['question'], args)})
 
-        # dataset[test_name] = dataset[test_name].map(
-        # lambda example: tokenizer(example['question'], padding='max_length', truncation=True, max_length=args.max_length, return_tensors='pt'))
+            dataset[val_name] = dataset[val_name].map(
+                lambda example: {'answer_keyword': extract_keyword_from_text(example['question'], args)})
 
-        # dataset[test_name] = dataset[test_name].map(
-        # lambda example: {'answer_tok': tokenizer(example[answers_name]['text'], padding='max_length', truncation=True, max_length=512, return_tensors='pt')})
+            dataset[test_name] = dataset[test_name].map(
+                lambda example: {'answer_keyword': extract_keyword_from_text(example['question'], args)})
+
+            id_to_node = {v: k for k, v in nodes_dict.items()}
+            id_to_rel = {v: k for k, v in rels_dict.items()}
+            dataset[train_name] = dataset[train_name].map(
+                lambda example: {'oracle_graphs': create_oracle_graph(example, id_to_node, id_to_rel)})
 
 
 
-        # dataset[test_name] = dataset[test_name].map(
-        #    lambda example: graph_to_nodes_and_rel(example['graph']))
 
         print('The number of nodes is:  ', len(nodes))
         print('The number of relations is:  ', len(rels))
@@ -257,6 +243,9 @@ def main(args):
 
                 dataset[test_name] = dataset[test_name].map(
                     lambda example: {'support_documents': extract_support_from_links(example[support_doc_name], args.dataset)})
+            else:
+                print('creating support documents from links is not supported for this dataset')
+
 
 
         print('saving nodes and rels of the graphs')
@@ -395,7 +384,7 @@ def main(args):
                       model_lr=args.model_lr, gnn_lr=args.gnn_lr, gnn_layers=args.layer_with_gnn, labels=answers_name,
                       use_support_document=args.use_support_document,
                       create_embeddings_with_model=args.create_embeddings_with_model, emb_dir=emb_dir,
-                      batch_size_embedding=args.batch_size_embedding)
+                      batch_size_embedding=args.batch_size_embedding, use_oracle_graphs=args.use_oracle_graphs)
 
         # create T5 question for each example
         dataset[train_name] = dataset[train_name].map(
@@ -430,6 +419,12 @@ def main(args):
 
 if __name__ == '__main__':
     args = get_args()
+    if args.wandb_project:
+        print('--wandb_project is deprecated, use --project instead')
+        setattr(args, 'project', args.wandb_project)
+    if args.sentence_transformer_embedding_size:
+        print('--sentence_transformer_embedding_size is deprecated, use --embedding_size instead')
+        setattr(args, 'embedding_size', args.sentence_transformer_embedding_size)
     if args.set_anomaly_detection:
         with torch.autograd.set_detect_anomaly(True):
             main(args)

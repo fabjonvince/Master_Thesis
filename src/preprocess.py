@@ -97,6 +97,25 @@ def from_triplets_of_ids_to_triplets_of_string(triplets, node_dict, rel_dict):
     return str_trips
 
 
+rake = Rake()
+yakem = yake.KeywordExtractor()
+keywbert = KeyBERT()
+
+def extract_keyword_from_text(text, args):
+    if args.keyword_extraction_method == 'rake':
+        kw_model = rake
+        kw_model.extract_keywords_from_text(text)
+        kw = kw_model.get_ranked_phrases()
+        kw = [kw[i].lower() for i in range(len(kw))]
+    else:
+        if args.keyword_extraction_method == 'yake':
+            kw_model = yakem
+        else:
+            kw_model = keywbert
+        kw = kw_model.extract_keywords(text)
+        kw = [kw[i][0].lower() for i in range(len(kw))]
+    return kw
+
 def text_to_graph_concept(
         N,  # numero di salti
         text,  # domanda

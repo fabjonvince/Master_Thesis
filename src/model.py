@@ -7,7 +7,8 @@ import torch
 from torch import tensor
 
 from preprocess import load_with_pickle, from_triplets_of_ids_to_triplets_of_string
-from tools import AllReasoningPath, get_rouge_scores, get_bert_scores, get_bartscore
+from tools import AllReasoningPath, get_rouge_scores, get_bert_scores, get_bartscore, find_kg_pathes
+import nltk
 
 gen_val_params = {
     'max_length': 140,
@@ -42,6 +43,7 @@ class GNNQA(pl.LightningModule):
                  labels=None,
                  use_support_document=False,
                  create_embeddings_with_model=False,
+                 use_oracle_graphs=False,
                  emb_dir=None,
                  batch_size_embedding=None,
                  ):
@@ -68,6 +70,10 @@ class GNNQA(pl.LightningModule):
         if self.use_support_document == True:
             self.tokenizer.add_special_tokens(
                 {"additional_special_tokens": tokenizer.additional_special_tokens + ["<SUPP_DOC_TOK>"]})
+        self.use_oracle_graphs = use_oracle_graphs
+        if self.use_oracle_graphs == True:
+            # I set stop word using NLTK
+            self.stop_words = nltk.corpus.stopwords.words('english')
         self.create_embeddings_with_model = create_embeddings_with_model
         self.emb_dir= emb_dir
         self.batch_size_embedding = batch_size_embedding
@@ -98,6 +104,17 @@ class GNNQA(pl.LightningModule):
                             batch_size_embedding=batch_size_embedding)
 
         return output.loss, output.logits
+
+    def get_all_pathes(self, keywords, answer, kg, max_path_length=3):
+        end_nodes = answer.lower().split(' ')
+        end_nodes = [e for e in end_nodes if e not in self.stop_words]
+        all_pathes = []
+        for keyword in keywords:
+            for end_node in end_nodes:
+                path = find_kg_pathes(keyword, end_node, kg, max_path_length)
+                if path is not None:
+                    all_pathes.append(path)
+        return all_pathes
 
     # retrieve data from the batch for the next step
     def prepare_data_from_batch(self, batch):
@@ -142,13 +159,22 @@ class GNNQA(pl.LightningModule):
         reasoning_path = AllReasoningPath()
         reasoning_path.set_root_nodes(keywords, 2)
 
-        return batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids
+        all_pathes = None
+        if self.use_oracle_graphs:
+            if 'oracle_graphs' in batch:
+                all_pathes = batch['oracle_graphs']
+            else:
+                #pdb.set_trace()
+                if type(answer) == list:
+                    answer = answer[0]
+                all_pathes = self.get_all_pathes(keywords, answer, graph, max_path_length=3)
+
+        return batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids, all_pathes
 
     def training_step(self, batch, batch_idx):
         #pdb.set_trace()
-        batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids = self.prepare_data_from_batch(batch)
-        #if self.create_embeddings_with_model:
-            #self.generate_embeddings(graph)
+        batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids, all_pathes = self.prepare_data_from_batch(batch)
+
 
         loss = self(input_ids=input_ids, attention_mask=attention_mask, labels=labels, gnn_triplets=graph,
                     gnn_mask=batch['gnn_mask'], rel_mask=batch['rel_mask'], current_reasoning_path=reasoning_path,
@@ -162,9 +188,8 @@ class GNNQA(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         #pdb.set_trace()
-        batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids = self.prepare_data_from_batch(batch)
-        #if self.create_embeddings_with_model:
-            #self.generate_embeddings(graph)
+        batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids, _ = self.prepare_data_from_batch(batch)
+
 
         with torch.no_grad():
             predictions = self.model.generate(input_ids=input_ids, gnn_triplets=graph,
@@ -223,9 +248,7 @@ class GNNQA(pl.LightningModule):
 
     def test_step(self, batch, batch_idx):
         #pdb.set_trace()
-        batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids = self.prepare_data_from_batch(batch)
-        #if self.create_embeddings_with_model:
-            #self.generate_embeddings(graph)
+        batch, input_ids, attention_mask, labels, graph, reasoning_path, rels_ids, _ = self.prepare_data_from_batch(batch)
 
         with torch.no_grad():
             predictions = self.model.generate(input_ids=input_ids, gnn_triplets=graph,

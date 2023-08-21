@@ -51,9 +51,24 @@ class AllReasoningPath:
         self.loss_nodes = None
 
     def set_targets(self, targets_rel=None, targets_node=None, target_path=None):
+        """
+        This function is used to set the targets for the reasoning path. Futhermore, it takes care of deleting the
+        reasoning path that is not in the target path.
+        Args:
+            targets_rel:
+            targets_node:
+            target_path:
+
+        Returns:
+
+        """
         self.targets_rel = targets_rel
         self.targets_node = targets_node
         self.target_path = target_path
+        # now I check each key in the all_path, if it is not in the target_path, I delete it
+        for key in list(self.all_path.keys()):
+            if key not in target_path:
+                del self.all_path[key]
 
     def get_targets(self):
         return self.targets_rel, self.targets_node, self.target_path
@@ -364,6 +379,7 @@ def pad_path_to_max_len(path, max_len):
 
 
 def create_oracle_graph(row, ids_to_nodes, ids_to_rels, max_len, save_dir):
+    #pdb.set_trace()
     oraclepaths = OraclePathDict()
     keysq = row['keywords']
     keysa = row['answer_keyword']
@@ -374,7 +390,6 @@ def create_oracle_graph(row, ids_to_nodes, ids_to_rels, max_len, save_dir):
 
     kg = from_triplets_of_ids_to_triplets_of_string(graph, ids_to_nodes, ids_to_rels)  # convert the triplets of ids to triplets of string
 
-    graphs = dict()
     for keyq in keysq:
         for keya in keysa:
             print(keyq, keya)

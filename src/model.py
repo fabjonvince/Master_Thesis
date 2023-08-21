@@ -242,14 +242,23 @@ class GNNQA(pl.LightningModule):
         if self.create_embeddings_with_model:
             self.generate_embeddings(graph)
         if self.use_oracle_graphs:
+            pdb.set_trace()
+            # The graph should contain topk paths for each root_word
+            # Now I fix larger
             all_pathes = {k: v[:self.model.args.gnn_topk] for k, v in all_pathes.items()}
+            # now I fix smaller
+            for k, v in all_pathes.items():
+                if len(v) < self.model.args.gnn_topk:
+                    v = v * (self.model.args.gnn_topk // len(v)) + v[:self.model.args.gnn_topk % len(v)]
+                    all_pathes[k] = v
+
             # target is a dictionary where k are keywords and v are probability distribution, one for each triplet in the all_paths.
             targets_rel, targets_node = self.prepare_for_oracle_graph_training(all_pathes)
             targets = self.prepare_target_graphs(all_pathes, self.model.args.gnn_topk)
             reasoning_path.set_targets(targets_rel, targets_node, targets)
 
 
-
+            #pdb.set_trace()
 
 
         loss = self(input_ids=input_ids, attention_mask=attention_mask, labels=labels, gnn_triplets=graph,

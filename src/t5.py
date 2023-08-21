@@ -170,20 +170,24 @@ class CustomGNNLayer(torch.nn.Module):
         # I generate the probability over all the relations
         rel_prob = self.classification_head(hidden_states[rel_mask.bool()])
         # rel_prob shape (batch_size=1, num_rels)
-        if self.use_oracle_rel and current_reasoning_path.targets_rel is not None:
-            # Ok, I have target rels and I want to use them
-            # I extract the target rels that are a list of list of prob distribution
-            # Shape: KXLXR where K is the number of root_nodes, L is the number of layers with gnn, R is the number of relations
-            oracle_rel = current_reasoning_path.targets_rel.values()
-            targets = []
-            for i, (rel, target) in enumerate(zip(rel_prob, oracle_rel)):
-                # for each root_node I select the predicted prob rel and the target one corresponding to the layer
-                current_target = target[self.layer_position]
-                criterion = torch.nn.CrossEntropyLoss()
-                loss = criterion(rel, current_target)
-                current_reasoning_path.add_rel_loss(loss)
-                targets.append(current_target)
-            rel_prob = torch.stack(targets)
+        try:
+            if self.use_oracle_rel and current_reasoning_path.targets_rel is not None \
+                    and len(current_reasoning_path.targets_rel.keys()) > 0:
+                # Ok, I have target rels and I want to use them
+                # I extract the target rels that are a list of list of prob distribution
+                # Shape: KXLXR where K is the number of root_nodes, L is the number of layers with gnn, R is the number of relations
+                oracle_rel = current_reasoning_path.targets_rel.values()
+                targets = []
+                for i, (rel, target) in enumerate(zip(rel_prob, oracle_rel)):
+                    # for each root_node I select the predicted prob rel and the target one corresponding to the layer
+                    current_target = target[self.layer_position]
+                    criterion = torch.nn.CrossEntropyLoss()
+                    loss = criterion(rel, current_target)
+                    current_reasoning_path.add_rel_loss(loss)
+                    targets.append(current_target)
+                rel_prob = torch.stack(targets)
+        except Exception as e:
+            pdb.set_trace()
         current_nodes = current_reasoning_path.get_current_nodes()
         # now current nodes is a dict where k arep the root nodes and v are a list of topk elements representing the current node
 
@@ -227,6 +231,7 @@ class CustomGNNLayer(torch.nn.Module):
             # now it computes the weighted contribution of all the ends nodes.
             # They are weighted by the relation weights and the score computed with an attention mechanism
             # Like before all the vaiable have the first size equal to the number of last nodes (topk) so we iterate for each last_word.
+            #pdb.set_trace()
             for end_nods, probs, rels, cur_node, k in zip(groups_nodes, rels_of_last_nodes_prob, rels_of_last_nodes, last_nodes, range(self.topk)):
                 # end_nods contains all the end nodes that have cur_node as start node
                 # particularly end_nods is a list of list of end nodes. One list for each rel of cur_node.
@@ -245,21 +250,25 @@ class CustomGNNLayer(torch.nn.Module):
                 scores, embs = self.calculate_scores(query.view(1, -1), k_nodes=node_embs,
                                                      probabilities=probs.view(1, -1))
 
-                if self.use_oracle_nodes:
-                    pdb.set_trace()
-                    targets_nodes = current_reasoning_path.targets_node[root_word][self.layer_position]
+                if self.use_oracle_nodes and current_reasoning_path.targets_node is not None \
+                        and len(current_reasoning_path.targets_node.keys()) > 0:
+                    #pdb.set_trace()
+                    try:
+                        targets_nodes = [current_reasoning_path.targets_node[root_word][self.layer_position][k]]
+                    except:
+                        pdb.set_trace()
                     tres = [r for r,_,_ in targets_nodes]
                     target = torch.zeros_like(scores, requires_grad=False, device=scores.device)
-                    for i in range(len(rels)):
-                        if rels[i] in tres:
+                    for i in range(len(rels[1])):
+                        if rels[1][i] in tres:
                             # I get the index of the rel in tres
-                            idx = tres.index(rels[i])
+                            idx = tres.index(rels[1][i])
                             # I get the target node
-                            tnode = tres[idx][1]
-                            tnodeid = tres[idx][2]
+                            tnode = targets_nodes[idx][1]
+                            # IL PROBLEMA E': arrivo qua e tnode che è il target node non è presente tra gli end_nodes.
                             nidx = end_nods[i].index(tnode)
                             target[i, nidx] = 1
-                    target = torch.nn.Softmax(dim=1)(target)
+                    target = torch.nn.Softmax(dim=-1)(target.view(1, -1)*10).view(scores.shape)
                     criterion = torch.nn.CrossEntropyLoss()
                     nodeloss = criterion(scores, target)
                     current_reasoning_path.add_node_loss(nodeloss)

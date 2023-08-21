@@ -57,7 +57,7 @@ def get_args(default=False):
     argparser.add_argument('--train_samples', type=int, default=None, help='Number of train samples')
     argparser.add_argument('--val_samples', type=int, default=None, help='Number of validation samples')
     argparser.add_argument('--test_samples', type=int, default=None, help='Number of test samples')
-    argparser.add_argument('--graph_depth', type=int, default=3, help='Graph depth')
+    argparser.add_argument('--graph_depth', type=int, default=2, help='Graph depth')
     argparser.add_argument('--keyword_extraction_method', type=str, default='rake', help='kw extraction method')
     argparser.add_argument('--create_support_from_links', default=False, action='store_true', help='create support from links')
     argparser.add_argument('--dont_use_sentence_transformers', default=False, action='store_true', help='use sentence transformers')
@@ -136,7 +136,9 @@ def main(args):
         if args.keyword_extraction_method != 'yake' and args.keyword_extraction_method != 'rake':
             args.keyword_extraction_method = 'bert'
         # directory where to save the dataset
-        save_dir = f'dataset/{args.dataset}_{args.train_samples}_{args.val_samples}_{args.test_samples}_conceptnet_{args.keyword_extraction_method}'
+        save_dir = f'dataset/{args.dataset}_{args.train_samples}_{args.val_samples}_{args.test_samples}_conceptnet_{args.keyword_extraction_method}_graphdepth{args.graph_depth}'
+        if args.create_oracle_graphs:
+            save_dir = save_dir + '_oracle'
         if args.create_support_from_links:
             if args.dataset == 'din0s' or args.dataset == 'aquamuse':
                 save_dir = save_dir + '_doc'
@@ -156,7 +158,7 @@ def main(args):
         # dataset sampling
         print(
             f"Sampling dataset to {args.train_samples} train, {args.val_samples} val, {args.test_samples} test samples")
-        dataset[train_name] = dataset[train_name].shuffle(seed=42).select(range(args.train_samples))
+        dataset[train_name] = dataset[train_name].shuffle(seed=42).select(range(60, args.train_samples))
         dataset[val_name] = dataset[val_name].shuffle(seed=42).select(range(args.val_samples))
         dataset[test_name] = dataset[test_name].shuffle(seed=42).select(range(args.test_samples))
         print(
@@ -200,6 +202,7 @@ def main(args):
 
         # Now I extract the main keyword of the answer
         if args.create_oracle_graphs:
+            print('Creating oracle graphs')
             dataset[train_name] = dataset[train_name].map(
                 lambda example: {'answer_keyword': extract_keyword_from_text(
                     example['answers']['text'] if type(example['answers']['text']) != list

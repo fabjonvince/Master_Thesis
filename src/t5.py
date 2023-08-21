@@ -1,6 +1,9 @@
 import copy
+import glob
 import pdb
 from typing import Optional, Tuple, Union
+
+import numpy as np
 import torch
 import torch.nn.functional as F
 from torch.nn import CrossEntropyLoss
@@ -134,6 +137,9 @@ class CustomGNNLayer(torch.nn.Module):
                 memory_embs=None,  # embeddings of the nodes in the memory
                 current_reasoning_path: AllReasoningPath = None,
                 rels_ids=None,  # ids of the relations in the memory
+                create_embeddings_with_model=False,
+                emb_dir=None,
+                batch_size_embedding=None,
                 ):
 
         """
@@ -239,8 +245,15 @@ class CustomGNNLayer(torch.nn.Module):
                 for ns in end_nods:
                     # ns contains is the list of end nodes associated to cur_node and a rel.
                     # turn them into embedding using the memory matrix
-                    #node_embs.append(torch.stack([torch.tensor(memory_embs[n]) for n in ns]))
-                    node_embs.append(torch.stack([torch.tensor(memory_embs[n]) for n in ns]))
+                    if create_embeddings_with_model==False:
+                        node_embs.append(torch.stack([torch.tensor(memory_embs[n]) for n in ns]))
+                    else:
+                        rows = [(idx, n) for idx, n in enumerate(memory_embs.keys()) if n in ns]
+                        for row in rows:
+                            start = batch_size_embedding * (row[0] // batch_size_embedding)
+                            matching_files = glob.glob(f'{emb_dir}*_{start}_*')
+                            memory = np.load(str(matching_files[0]), allow_pickle=True)
+                            node_embs = torch.tensor(memory.item()[memory_embs[ns[row[1]]]])
                 # compute the scores associated to each embedding
                 # the function perform a self-attention between the query and the node_embs extracted before.
                 # the node_embs are of shape [n_rels, n_end_nodes, emb_dim]
@@ -375,6 +388,9 @@ class T5GNNBlock(nn.Module):
         memory_embs=None,  # embeddings of the nodes in the memory
         current_reasoning_path: AllReasoningPath = None,
         rels_ids=None,  # ids of the relations in the memory
+        create_embeddings_with_model=False,
+        emb_dir=None,
+        batch_size_embedding=None,
     ):
 
         if past_key_value is not None:
@@ -461,6 +477,9 @@ class T5GNNBlock(nn.Module):
             memory_embs,  # embeddings of the nodes in the memory
             current_reasoning_path,
             rels_ids,  # ids of the relations in the memory
+            create_embeddings_with_model,
+            emb_dir,
+            batch_size_embedding,
             )
 
         outputs = (hidden_states,)
@@ -564,6 +583,9 @@ class T5GNNStack(T5PreTrainedModel):
         memory_embs=None,  # embeddings of the nodes in the memory
         current_reasoning_path: AllReasoningPath = None,
         rels_ids=None,  # ids of the relations in the memory
+        create_embeddings_with_model=False,
+        emb_dir=None,
+        batch_size_embedding=None,
     ):
 
         # Model parallel
@@ -710,6 +732,9 @@ class T5GNNStack(T5PreTrainedModel):
                         memory_embs=memory_embs,  # embeddings of the nodes in the memory
                         current_reasoning_path=current_reasoning_path,  # current reasoning path
                         rels_ids=rels_ids,  # ids of the relations in the memory
+                        create_embeddings_with_model=create_embeddings_with_model,
+                        emb_dir=emb_dir,
+                        batch_size_embedding=batch_size_embedding,
                     )
 
             else:
@@ -732,6 +757,9 @@ class T5GNNStack(T5PreTrainedModel):
                         memory_embs=memory_embs,  # embeddings of the nodes in the memory
                         current_reasoning_path=current_reasoning_path,  # current reasoning path
                         rels_ids = rels_ids,  # ids of the relations in the memory
+                        create_embeddings_with_model=create_embeddings_with_model,
+                        emb_dir=emb_dir,
+                        batch_size_embedding=batch_size_embedding,
                     )
                 else:
                     layer_outputs = layer_module(
@@ -925,6 +953,9 @@ class T5GNNForConditionalGeneration(T5PreTrainedModel):
         memory_embs=None,  # embeddings of the nodes in the memory
         current_reasoning_path: AllReasoningPath = None,
         rels_ids=None,  # ids of the relations in the memory,
+        create_embeddings_with_model=False,
+        emb_dir=None,
+        batch_size_embedding=None,
     ) -> Union[Tuple[torch.FloatTensor], Seq2SeqLMOutput]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
@@ -977,6 +1008,9 @@ class T5GNNForConditionalGeneration(T5PreTrainedModel):
                 memory_embs=memory_embs,  # embeddings of the nodes in the memory
                 current_reasoning_path = current_reasoning_path,
                 rels_ids=rels_ids,  # ids of the relations in the memory
+                create_embeddings_with_model=create_embeddings_with_model,
+                emb_dir=emb_dir,
+                batch_size_embedding=batch_size_embedding,
             )
         elif return_dict and not isinstance(encoder_outputs, BaseModelOutput):
             encoder_outputs = BaseModelOutput(

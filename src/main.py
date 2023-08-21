@@ -1,4 +1,5 @@
 import argparse
+import shutil
 from datetime import datetime
 import os
 import time
@@ -87,6 +88,7 @@ def get_args(default=False):
     argparser.add_argument('--use_oracle_rel', default=False, action='store_true', help='use oracle rel')
     argparser.add_argument('--use_oracle_nodes', default=False, action='store_true', help='use oracle nodes')
     argparser.add_argument('--force_target_path', default=False, action='store_true', help='force target path')
+    argparser.add_argument('--force_embedding_recreation', default=False, action='store_true', help='force embedding recreation')
 
     # GNN Args
     argparser.add_argument('--layer_with_gnn', type=int, nargs='+', default=[1, 2], help='Layers with KIL')
@@ -385,6 +387,10 @@ def main(args):
         if args.create_embeddings_with_model:
 
             nodes_arr = list(nodes.values())
+
+            if args.force_embedding_recreation:
+                if os.path.exists(emb_dir):
+                    shutil.rmtree(emb_dir)
 
             if not os.path.exists(emb_dir):
                 os.makedirs(emb_dir)

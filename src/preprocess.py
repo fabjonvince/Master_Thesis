@@ -223,7 +223,7 @@ def extract_support_from_links(support, dataset):
             try:
                 html = requests.get(url, timeout=2)
                 soup = BeautifulSoup(html.text, 'html.parser')
-                txt = txt + ' ' + soup.getText()
+                txt = txt + ' ' + soup.getText(strip=True)
             except requests.exceptions.RequestException as e:
                 pass
 
